@@ -1,7 +1,12 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-export function jsonStore(file: string) {
+export type JsonStore = {
+  read(): Record<string, unknown>;
+  write(values: Record<string, unknown>): void;
+};
+
+export function jsonStore(file: string): JsonStore {
   return {
     read(): Record<string, unknown> {
       try {
