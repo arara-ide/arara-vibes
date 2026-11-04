@@ -1,17 +1,60 @@
 {
   "name": "arara-vibes",
-  "version": "0.0.1",
-  "private": true,
+  "version": "0.1.0",
+  "description": "Floating AI desktop companion powered by Arara AI",
   "license": "Apache-2.0",
+  "main": "dist/main.cjs",
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:smoke": "env -u ELECTRON_RUN_AS_NODE electron . --smoke-test",
     "build": "tsc --noEmit && node scripts/build.mjs",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "check:i18n": "node scripts/check-i18n.mjs",
+    "start": "env -u ELECTRON_RUN_AS_NODE electron .",
+    "package": "electron-builder",
+    "package:mac": "electron-builder --mac",
+    "package:win": "electron-builder --win",
+    "package:linux": "electron-builder --linux"
+  },
+  "build": {
+    "appId": "br.app.code.arara.vibes",
+    "productName": "Arara Vibes",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "media/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.developer-tools"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Development"
+    }
   },
   "devDependencies": {
     "@types/node": "24.19.1",
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8",
+    "esbuild": "^0.28.2",
     "typescript": "6.0.3",
     "vitest": "5.0.3"
   }

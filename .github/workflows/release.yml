@@ -7,7 +7,7 @@ on:
     branches: [main, development]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   verify:
@@ -18,40 +18,68 @@ jobs:
         with:
           node-version: '22'
       - run: npm ci
-      - run: npm run typecheck && npm test
+      - run: npm run typecheck
+      - run: npm run check:i18n
+      - run: npm test
+      - run: npm run build
 
-  package:
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+  build:
     needs: verify
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     strategy:
-      fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest, windows-latest]
+        include:
+          - os: macos-latest
+            platform: mac
+          - os: ubuntu-latest
+            platform: linux
+          - os: windows-latest
+            platform: win
     runs-on: ${{ matrix.os }}
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-        with:
-          repository: arara-ide/arara-ai
-          ref: main
-          token: ${{ vars.ENVS_REPO_PAT || secrets.ENVS_REPO_PAT }}
-          path: arara-ai
-          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
       - run: npm ci
-      - run: npm ci
-        working-directory: arara-ai
       - run: npm run build
-        working-directory: arara-ai
-      - run: npm run build
+      - name: Package application
+        run: npm run package:${{ matrix.platform }}
         env:
-          ARARA_AI_DIR: ${{ github.workspace }}/arara-ai
-      - uses: actions/upload-artifact@v4
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
         with:
-          name: vibes-${{ matrix.os }}
-          path: release/*
-          if-no-files-found: error
+          name: arara-vibes-${{ matrix.platform }}
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/*.AppImage
+            release/*.deb
+            release/*.exe
+
+  publish:
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Prepare release files
+        run: |
+          mkdir -p release-files
+          find artifacts -type f -exec cp {} release-files/ \;
+          cd release-files
+          sha256sum * > SHA256SUMS || shasum -a 256 * > SHA256SUMS
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="$(node -p 'require("./package.json").version')"
+          tag="v${version}"
+          gh release create "$tag" release-files/* \
+            --title "Arara Vibes ${tag}" \
+            --notes "Floating AI companion powered by Arara AI." \
+            --repo "$GITHUB_REPOSITORY" || true
