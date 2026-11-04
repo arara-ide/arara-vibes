@@ -27,6 +27,7 @@ jobs:
     needs: verify
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: macos-latest
@@ -51,6 +52,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: arara-vibes-${{ matrix.platform }}
+          if-no-files-found: ignore
           path: |
             release/*.dmg
             release/*.zip
