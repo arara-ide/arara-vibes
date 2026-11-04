@@ -1,0 +1,57 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main, development]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - run: npm run typecheck && npm test
+
+  package:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: arara-ide/arara-ai
+          ref: main
+          token: ${{ vars.ENVS_REPO_PAT || secrets.ENVS_REPO_PAT }}
+          path: arara-ai
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - run: npm ci
+        working-directory: arara-ai
+      - run: npm run build
+        working-directory: arara-ai
+      - run: npm run build
+        env:
+          ARARA_AI_DIR: ${{ github.workspace }}/arara-ai
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vibes-${{ matrix.os }}
+          path: release/*
+          if-no-files-found: error
