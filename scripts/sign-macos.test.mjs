@@ -20,7 +20,7 @@ test('release imports signing secrets and cleans the temporary keychain', () => 
 });
 
 test('each platform publishes on its own without waiting for the others', () => {
-  const workflow = readFileSync(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8');
+  const workflow = readFileSync(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   for (const platform of ['linux', 'windows', 'macos-x64', 'macos-arm64']) {
     assert.match(workflow, new RegExp(`release-${platform}:\\n    if: github.ref == 'refs/heads/main'\\n    needs: \\[version, ${platform}\\]`));
   }
