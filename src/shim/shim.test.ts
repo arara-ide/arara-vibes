@@ -13,7 +13,7 @@ import { Env } from './env';
 import { createVscodeShim } from './vscode';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 describe('events', () => {
   it('fires and stops after dispose', () => {
@@ -36,10 +36,11 @@ describe('events', () => {
 
 describe('Uri', () => {
   it('round-trips file paths with spaces', () => {
-    expect(Uri.file('/tmp/a b/c.ts').fsPath).toBe('/tmp/a b/c.ts');
+    const file = resolve('/tmp/a b/c.ts');
+    expect(Uri.file(file).fsPath).toBe(file);
   });
   it('joins paths and parses https', () => {
-    expect(Uri.joinPath(Uri.file('/a'), 'b', '../c').path).toBe('/a/c');
+    expect(Uri.joinPath(Uri.file('/a'), 'b', '../c').path).toBe(`${Uri.file('/a').path}/c`);
     const uri = Uri.parse('https://x.test/p?q=1#f');
     expect([uri.scheme, uri.authority, uri.path, uri.query, uri.fragment]).toEqual(['https', 'x.test', '/p', 'q=1', 'f']);
   });

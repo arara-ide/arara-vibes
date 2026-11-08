@@ -1,0 +1,74 @@
+name: Build platform
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
+      platform:
+        type: string
+        required: true
+      runner:
+        type: string
+        required: true
+      arch:
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ${{ inputs.runner }}
+    env:
+      ARARA_CODE_SOURCE: .sources/arara-code
+      ARARA_MACOS_SIGN_IDENTITY: ${{ vars.ARARA_MACOS_SIGN_IDENTITY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: arara-ide/arara-code
+          ref: ${{ github.ref_name }}
+          path: .sources/arara-code
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - run: npm version "${{ inputs.version }}" --no-git-tag-version --allow-same-version
+      - run: npm test
+      - run: npm run build
+      - name: Import persistent macOS signing identity
+        if: startsWith(inputs.platform, 'macos')
+        env:
+          ARARA_MACOS_SIGN_P12_BASE64: ${{ secrets.ARARA_MACOS_SIGN_P12_BASE64 }}
+          ARARA_MACOS_SIGN_PASSWORD: ${{ secrets.ARARA_MACOS_SIGN_PASSWORD }}
+        run: bash .sources/arara-code/scripts/import-macos-signing.sh
+      - name: Package application
+        shell: bash
+        run: |
+          case "${{ inputs.platform }}" in
+            macos-*) npm run package:mac -- --${{ inputs.arch }} ;;
+            windows) npm run package:win ;;
+            linux) npm run package:linux ;;
+          esac
+      - name: Collect packages
+        shell: bash
+        run: |
+          mkdir -p dist-release
+          find release -maxdepth 1 -type f \( -name '*.dmg' -o -name '*.zip' -o -name '*.AppImage' -o -name '*.deb' -o -name '*.exe' \) -exec cp {} dist-release/ \;
+          ls dist-release | grep -q "${{ inputs.version }}"
+      - name: Development hashes
+        if: github.ref == 'refs/heads/development'
+        shell: bash
+        run: (cd dist-release && { sha256sum ./* 2>/dev/null || shasum -a 256 ./*; } > SHA256SUMS)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.ref_name == 'development' && format('arara-vibes-development-{0}', inputs.platform) || inputs.platform }}
+          path: dist-release/
+          retention-days: 14
+          if-no-files-found: error
+      - name: Remove temporary signing keychain
+        if: always() && startsWith(inputs.platform, 'macos') && env.ARARA_MACOS_SIGN_KEYCHAIN != ''
+        run: security delete-keychain "$ARARA_MACOS_SIGN_KEYCHAIN"

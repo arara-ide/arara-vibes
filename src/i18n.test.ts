@@ -14,6 +14,7 @@ describe('i18n', () => {
   });
 
   it('normalizes locales correctly', () => {
+    expect(normalizeLocale(undefined)).toBe('en');
     expect(normalizeLocale('pt-BR')).toBe('pt');
     expect(normalizeLocale('pt_PT')).toBe('pt');
     expect(normalizeLocale('es-419')).toBe('es');

@@ -10,10 +10,10 @@ const catalogs: Record<Locale, Record<string, string>> = {
   es,
 };
 
-let currentLocale: Locale = 'pt';
+let currentLocale: Locale = 'en';
 
 export function normalizeLocale(locale: string | undefined): Locale {
-  if (!locale) return 'pt';
+  if (!locale) return 'en';
   const clean = locale.toLowerCase().replace('_', '-');
   if (clean.startsWith('pt')) return 'pt';
   if (clean.startsWith('es')) return 'es';

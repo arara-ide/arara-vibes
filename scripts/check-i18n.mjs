@@ -14,7 +14,10 @@ const esKeys = Object.keys(es).sort();
 const diffPt = enKeys.filter(k => !pt[k]);
 const diffEs = enKeys.filter(k => !es[k]);
 
-if (diffPt.length > 0 || diffEs.length > 0) {
+const parameters = text => [...text.matchAll(/\{\d+\}/g)].map(match => match[0]).sort().join(',');
+const invalid = [pt, es].some(catalog => Object.keys(catalog).sort().join('\n') !== enKeys.join('\n') || enKeys.some(key => parameters(catalog[key] ?? '') !== parameters(en[key])));
+
+if (invalid || diffPt.length > 0 || diffEs.length > 0) {
   process.stderr.write(`Missing translations in pt: ${diffPt.join(', ')}\nMissing in es: ${diffEs.join(', ')}\n`);
   process.exit(1);
 }
