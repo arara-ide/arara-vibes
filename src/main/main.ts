@@ -205,12 +205,28 @@ else {
       }
       const tabs = await window.webContents.executeJavaScript(`({count:document.querySelectorAll('[role=tab]').length,numbered:[...document.querySelectorAll('[role=tab]')].some(tab=>/Codex [123]/.test(tab.textContent)),frames:document.querySelectorAll('.surface-frame').length})`);
       if (tabs.count < 4 || tabs.numbered || tabs.frames < 4) throw new Error('Independent conversation tabs failed');
-      const picker = await window.webContents.executeJavaScript(`(()=>{const picker=document.getElementById('tab-picker');picker.open=true;picker.dispatchEvent(new Event('toggle'));const anchor=picker.querySelector('summary').getBoundingClientRect();const panel=picker.querySelector('.picker-panel').getBoundingClientRect();const options=[...document.querySelectorAll('#platform-options button')];const result={iconed:options.every(option=>option.querySelector('.option-icon')),badge:!!document.querySelector('.model-badge'),below:panel.top>=anchor.bottom&&panel.left>=0&&panel.right<=innerWidth,inset:document.getElementById('tab-strip').getBoundingClientRect().left>0,motion:matchMedia('(prefers-reduced-motion: reduce)').matches};picker.open=false;return result})()`);
+      const picker = await window.webContents.executeJavaScript(`(()=>{const picker=document.getElementById('tab-picker');picker.open=true;picker.dispatchEvent(new Event('toggle'));const anchor=picker.querySelector('summary').getBoundingClientRect();const panel=picker.querySelector('.picker-panel').getBoundingClientRect();const options=[...document.querySelectorAll('#platform-options button')];const result={sharing:options.findIndex(option=>option.dataset.platform==='sharing')===options.findIndex(option=>option.dataset.platform==='settings')-1,iconed:options.every(option=>option.querySelector('.option-icon')),badge:!!document.querySelector('.model-badge'),below:panel.top>=anchor.bottom&&panel.left>=0&&panel.right<=innerWidth,inset:document.getElementById('tab-strip').getBoundingClientRect().left>0,motion:matchMedia('(prefers-reduced-motion: reduce)').matches};picker.open=false;return result})()`);
+      await window.webContents.executeJavaScript(`document.querySelector('[data-platform="sharing"]').click()`);
+      const sharingDeadline = Date.now() + 10000;
+      let sharingReady = false;
+      while (Date.now() < sharingDeadline && !sharingReady) {
+        for (const frame of window.webContents.mainFrame.frames) {
+          sharingReady = Boolean(await frame.executeJavaScript(`!!document.querySelector('#sharing-platform') && !!document.querySelector('[data-sharing-role="lend"]') && !!document.querySelector('[data-sharing-role="borrow"]')`).catch(() => false));
+          if (sharingReady) {
+            await frame.executeJavaScript(`document.querySelector('[data-sharing-role="borrow"]').click()`);
+            await frame.executeJavaScript(`new Promise((resolve,reject)=>{const deadline=Date.now()+10000;const check=()=>{if(document.querySelector('.sharing-form input')&&!document.querySelector('[data-sharing-role="borrow"]').disabled)resolve(true);else if(Date.now()>deadline)reject(Error('Borrowing form did not render'));else setTimeout(check,50)};check()})`);
+            break;
+          }
+        }
+        if (!sharingReady) await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      if (!sharingReady) throw new Error('Sharing tab did not render the original controls');
+      process.stdout.write('PASS: sharing option before settings opens the original borrowing flow\n');
       const before = await window.webContents.executeJavaScript(`document.querySelectorAll('[role=tab]').length`);
       window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'W', modifiers: [process.platform === 'darwin' ? 'meta' : 'control'] });
       const closed = await window.webContents.executeJavaScript(`new Promise(resolve=>{const deadline=Date.now()+5000;const check=()=>{const n=document.querySelectorAll('[role=tab]').length;if(n<${before}||Date.now()>deadline)resolve(n);else setTimeout(check,50)};check()})`);
       if (closed !== before - 1 || window.isDestroyed()) throw new Error('Shortcut did not close only the active tab');
-      if (!picker.iconed || picker.badge || !picker.below || !picker.inset || picker.motion) throw new Error(`Tab picker layout failed: ${JSON.stringify(picker)}`);
+      if (!picker.sharing || !picker.iconed || picker.badge || !picker.below || !picker.inset || picker.motion) throw new Error(`Tab picker layout failed: ${JSON.stringify(picker)}`);
       if (process.env.ARARA_VIBES_TEST_ROOT) {
         const { writeFile } = await import('node:fs/promises');
         await writeFile(join(process.env.ARARA_VIBES_TEST_ROOT, 'logout'), '');
