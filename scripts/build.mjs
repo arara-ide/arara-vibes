@@ -1,38 +1,18 @@
 import * as esbuild from 'esbuild';
-import { cpSync, existsSync, mkdirSync } from 'node:fs';
+import { cpSync, mkdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-
+const code = process.env.ARARA_CODE_SOURCE || resolve(root, '../arara-code');
 mkdirSync(resolve(root, 'dist'), { recursive: true });
-
-await esbuild.build({
-  entryPoints: [resolve(root, 'src/main/main.ts')],
-  bundle: true,
-  platform: 'node',
-  target: 'node22',
-  outfile: resolve(root, 'dist/main.cjs'),
-  external: ['electron'],
-  format: 'cjs',
-  sourcemap: true,
-});
-
-await esbuild.build({
-  entryPoints: [resolve(root, 'src/preload/preload.ts')],
-  bundle: true,
-  platform: 'node',
-  target: 'node22',
-  outfile: resolve(root, 'dist/preload.cjs'),
-  external: ['electron'],
-  format: 'cjs',
-  sourcemap: true,
-});
-
-const aiMedia = resolve(root, '../arara-ai/media');
-if (existsSync(aiMedia)) {
-  mkdirSync(resolve(root, 'media'), { recursive: true });
-  cpSync(aiMedia, resolve(root, 'media'), { recursive: true });
-}
-
-process.stdout.write('Build completed successfully.\n');
+const bundle = (entry, output, platform = 'node', format = 'cjs') => esbuild.build({ entryPoints: [entry], bundle: true, platform, target: 'es2022', outfile: resolve(root, 'dist', output), external: platform === 'node' ? ['electron', 'electron-liquid-glass'] : [], format });
+await bundle(resolve(root, 'src/main/main.ts'), 'main.cjs');
+await bundle(resolve(root, 'src/host/preview.ts'), 'preview.mjs', 'node', 'esm');
+await bundle(resolve(root, 'src/renderer/main.ts'), 'renderer.js', 'browser', 'iife');
+await bundle(resolve(code, 'extensions/arara-update/src/companion.js'), 'companion.cjs');
+for (const file of ['index.html', 'shell.css', 'tokens.css', 'logo.svg', 'logo-white.svg', 'logo-animated.svg']) cpSync(resolve(root, 'src/renderer', file), resolve(root, 'dist', file));
+cpSync(resolve(root, 'assets/icons.svg'), resolve(root, 'dist/icons.svg'));
+cpSync(resolve(root, 'assets/codicons-LICENSE'), resolve(root, 'dist/codicons-LICENSE'));
+cpSync(resolve(code, 'branding/msix/Square44x44Logo.png'), resolve(root, 'dist/tray.png'));
+process.stdout.write('Build completed: public shell and companion downloader; no Arara AI assets bundled.\n');

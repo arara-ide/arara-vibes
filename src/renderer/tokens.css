@@ -1,0 +1,36 @@
+:root {
+  color-scheme: dark;
+  --vscode-editor-background: #1b1d21;
+  --vscode-editor-foreground: #d4d8df;
+  --vscode-foreground: var(--vscode-editor-foreground);
+  --vscode-descriptionForeground: #969da8;
+  --vscode-widget-border: #343940;
+  --vscode-toolbar-hoverBackground: #2b3038;
+  --vscode-focusBorder: #6b9bd1;
+  --vscode-button-background: #365c85;
+  --vscode-button-foreground: #f2f4f7;
+  --vscode-button-hoverBackground: #416d9a;
+  --vscode-errorForeground: #e99c99;
+  --vscode-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --vscode-font-size: 13px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --radius: 12px;
+  --radius-sm: 6px;
+  --font-title: 20px;
+  --font-small: 12px;
+  --bar-height: 44px;
+  --icon-size: 24px;
+  --glyph-size: 16px;
+  --radius-xs: 6px;
+  --control-height: 28px;
+  --dur-fast: 160ms;
+  --dur-base: 200ms;
+  --ease-out: cubic-bezier(.23,1,.32,1);
+}
+:root { --tab-min-width: 72px; --tab-max-width: 200px; --tab-menu-width: 240px; }
+:root { --tab-height: 30px; --tab-close-size: 22px; --tab-close-glyph: 10px; --tab-close-pad: 6px; --tab-radius: 14px; --window-radius: 18px; }

@@ -2,30 +2,49 @@ name: Release
 
 on:
   push:
-    branches: [main]
-  pull_request:
     branches: [main, development]
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: arara-ide/arara-code
+          ref: ${{ github.ref_name }}
+          path: .sources/arara-code
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
       - run: npm ci
       - run: npm run typecheck
+      - run: npm run lint
       - run: npm run check:i18n
       - run: npm test
       - run: npm run build
+        env:
+          ARARA_CODE_SOURCE: .sources/arara-code
+
+  version:
+    needs: verify
+    runs-on: ubuntu-latest
+    outputs:
+      value: ${{ steps.version.outputs.value }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        run: |
+          base="$(node -p 'require("./package.json").version.split(".").slice(0,2).join(".")')"
+          patch=$(( 10000 + (10#$(date -u +%j) - 1) * 24 + 10#$(date -u +%H) ))
+          echo "value=${base}.${patch}" >> "$GITHUB_OUTPUT"
 
   build:
-    needs: verify
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: version
     strategy:
       fail-fast: false
       matrix:
@@ -37,22 +56,39 @@ jobs:
           - os: windows-latest
             platform: win
     runs-on: ${{ matrix.os }}
+    env:
+      ARARA_CODE_SOURCE: .sources/arara-code
+      ARARA_MACOS_SIGN_IDENTITY: ${{ vars.ARARA_MACOS_SIGN_IDENTITY }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: arara-ide/arara-code
+          ref: ${{ github.ref_name }}
+          path: .sources/arara-code
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
       - run: npm ci
+      - run: npm version "${{ needs.version.outputs.value }}" --no-git-tag-version --allow-same-version
+      - run: npm test
       - run: npm run build
+        env:
+          ARARA_CODE_SOURCE: .sources/arara-code
+      - name: Import persistent macOS signing identity
+        if: matrix.platform == 'mac'
+        env:
+          ARARA_MACOS_SIGN_P12_BASE64: ${{ secrets.ARARA_MACOS_SIGN_P12_BASE64 }}
+          ARARA_MACOS_SIGN_PASSWORD: ${{ secrets.ARARA_MACOS_SIGN_PASSWORD }}
+        run: bash .sources/arara-code/scripts/import-macos-signing.sh
       - name: Package application
         run: npm run package:${{ matrix.platform }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: arara-vibes-${{ matrix.platform }}
-          if-no-files-found: ignore
+          name: arara-vibes-${{ matrix.platform }}-${{ needs.version.outputs.value }}
+          retention-days: 14
+          if-no-files-found: error
           path: |
             release/*.dmg
             release/*.zip
@@ -60,9 +96,32 @@ jobs:
             release/*.deb
             release/*.exe
 
+      - name: Remove temporary signing keychain
+        if: always() && matrix.platform == 'mac' && env.ARARA_MACOS_SIGN_KEYCHAIN != ''
+        run: security delete-keychain "$ARARA_MACOS_SIGN_KEYCHAIN"
+
+  checksums:
+    needs: [version, build]
+    if: github.ref == 'refs/heads/development'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - run: |
+          mkdir -p files && find artifacts -type f -exec cp {} files/ \;
+          cd files && sha256sum * > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arara-vibes-${{ needs.version.outputs.value }}-SHA256SUMS
+          path: files/SHA256SUMS
+          retention-days: 14
+
   publish:
-    needs: build
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [version, build]
+    permissions:
+      contents: write
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -79,9 +138,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          version="$(node -p 'require("./package.json").version')"
-          tag="v${version}"
+          tag="v${{ needs.version.outputs.value }}"
           gh release create "$tag" release-files/* \
             --title "Arara Vibes ${tag}" \
-            --notes "Floating AI companion powered by Arara AI." \
-            --repo "$GITHUB_REPOSITORY" || true
+            --generate-notes \
+            --repo "$GITHUB_REPOSITORY"

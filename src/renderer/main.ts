@@ -1,0 +1,296 @@
+import { t, setLocale } from '../i18n';
+import { chatDocument } from './document';
+import type { HostInfo } from '../host/connection';
+import { tabLabel, initialSurface, needsSelection, type Surface } from './tabs';
+
+const element = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+interface View { frame: HTMLIFrameElement; token: string; epoch: number; ready: boolean; pending: unknown[]; state?: unknown }
+const views = new Map<string, View>();
+let surfaces: Surface[] = [];
+let hosts: HostInfo[] = [];
+let selected = '';
+let activeHost: HostInfo | undefined;
+let connected = false;
+let discovering = false;
+let hostRequested = false;
+let glass = false;
+document.documentElement.dataset.mac = String(/Mac/.test(navigator.platform));
+let requested: { id: string; preserveFocus: boolean } | undefined;
+const seenTabs = new Set<string>();
+let loadingTimeout: ReturnType<typeof setTimeout> | undefined;
+
+async function action(action: string, extra: Record<string, unknown> = {}): Promise<unknown> {
+  const response = await fetch('action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, ...extra }) });
+  if (!response.ok) throw new Error(t('Could not complete the action. Try again.'));
+  return response.json();
+}
+const send = (message: Record<string, unknown>) => action('message', { message });
+function localize(locale: string) {
+  setLocale(locale); document.documentElement.lang = locale;
+  document.querySelectorAll<HTMLElement>('[data-text]').forEach(node => { node.textContent = t(node.dataset.text!); });
+  document.querySelectorAll<HTMLElement>('[data-label]').forEach(node => { node.title = t(node.dataset.label!); node.setAttribute('aria-label', t(node.dataset.label!)); });
+}
+function feedback(text = '', error = false) {
+  const node = element('feedback'); node.textContent = text; node.hidden = !text; node.dataset.error = String(error);
+}
+const bootAt = Date.now();
+let bootTimer: ReturnType<typeof setTimeout> | undefined;
+function busy(loading: boolean) {
+  clearTimeout(loadingTimeout); clearTimeout(bootTimer);
+  const wait = bootAt + 2000 - Date.now();
+  if (!loading && wait > 0) { bootTimer = setTimeout(() => busy(false), wait); return; }
+  element('loading').dataset.off = String(!loading);
+  if (loading) loadingTimeout = setTimeout(() => { element('loading').dataset.off = 'true'; feedback(t('The conversation did not load. Try again.'), true); }, 20000);
+}
+function reset() {
+  for (const view of views.values()) view.frame.remove();
+  views.clear(); surfaces = [];
+  for (const id of ['history', 'new-chat']) element<HTMLButtonElement>(id).disabled = true;
+  connected = false; selected = ''; busy(false);
+  element('signin').hidden = true; element('history-panel').hidden = true; element('tab-strip').hidden = true;
+}
+async function connect(id: string) {
+  reset(); element('recover').hidden = true; activeHost = hosts.find(host => host.id === id);
+  if (!activeHost?.allowed) return;
+  feedback(); busy(true); localize(activeHost.locale);
+  if (activeHost.logo?.startsWith('data:image/svg+xml;base64,')) document.querySelectorAll<HTMLImageElement>('img:not(#loading-logo):not(#brand-logo)').forEach(img => { img.src = activeHost!.logo; });
+  for (const [key, value] of Object.entries(activeHost.theme)) if (/^--vscode-[\w-]+$/.test(key) && /^#[a-fA-F0-9]{3,8}$/.test(value)) document.documentElement.style.setProperty(key, value);
+  await action('connect', { id }); connected = true;
+  if (activeHost.signedIn === false) { busy(false); element('signin').hidden = false; }
+}
+let startedAt = 0;
+let onboarded = false;
+function recover() {
+  reset(); feedback(); element('loading').dataset.off = 'true'; element('recover').hidden = false;
+  element<HTMLButtonElement>('retry').focus();
+}
+interface VibesPreferences { language: string; animations: boolean; splash: boolean; closeAction: string; shortcut: string; launchAtLogin: boolean; showInBar: boolean; onboarded: boolean }
+let currentPreferences: VibesPreferences | undefined;
+function applyPreferences(next: VibesPreferences) {
+  const languageChanged = currentPreferences && currentPreferences.language !== next.language;
+  currentPreferences = next;
+  document.documentElement.dataset.motion = next.animations ? 'on' : 'off';
+  if (languageChanged) location.reload();
+}
+async function onboarding() {
+  const preferences = await action('preferences') as VibesPreferences;
+  applyPreferences(preferences);
+  if (preferences.onboarded) return;
+  const screen = element('onboarding');
+  const bar = /Mac/.test(navigator.platform) ? 'Show in the menu bar' : /Win/.test(navigator.platform) ? 'Show in the taskbar' : 'Show in the top bar';
+  element('onboarding-bar-label').textContent = t(bar);
+  element<HTMLInputElement>('onboarding-login').checked = true; element<HTMLInputElement>('onboarding-bar').checked = preferences.showInBar;
+  element('loading').dataset.off = 'true'; screen.hidden = false; element<HTMLButtonElement>('onboarding-continue').focus();
+  await new Promise<void>(done => { element('onboarding-continue').onclick = () => done(); });
+  const button = element<HTMLButtonElement>('onboarding-continue'); button.disabled = true;
+  try { await action('preferences', { preferences: { launchAtLogin: element<HTMLInputElement>('onboarding-login').checked, showInBar: element<HTMLInputElement>('onboarding-bar').checked, onboarded: true } }); }
+  finally { button.disabled = false; screen.hidden = true; element('loading').dataset.off = 'false'; }
+}
+async function discover() {
+  if (!onboarded) return;
+  if (!element('recover').hidden) return;
+  if (discovering) return;
+  discovering = true;
+  try {
+    hosts = await action('discover') as HostInfo[];
+    if (connected && activeHost) {
+      const current = hosts.find(host => host.id === activeHost!.id);
+      if (current?.signedIn && !element('signin').hidden) {
+        activeHost = current; element('signin').hidden = true; element('tab-strip').hidden = false;
+        const first = initialSurface(surfaces, selected || localStorage.getItem('vibes.surface'))?.id;
+        for (const surface of surfaces) void loadSurface(surface.id, surface.id === first).catch(fail);
+      }
+      if (current?.signedIn === false && element('signin').hidden) {
+        activeHost = current;
+        for (const view of views.values()) { view.frame.hidden = true; view.frame.removeAttribute('src'); }
+        element('signin').hidden = false; element('tab-strip').hidden = true;
+      }
+      return;
+    }
+    const host = hosts.find(item => item.allowed && item.background);
+    if (host) await connect(host.id);
+    else if (!hostRequested) { hostRequested = true; busy(true); startedAt = Date.now(); await action('startHost'); }
+    else if (Date.now() - startedAt > 45000) recover();
+  } finally { discovering = false; }
+}
+function activate(id: string) {
+  if (!surfaces.some(surface => surface.id === id)) return;
+  selected = id; localStorage.setItem('vibes.surface', id);
+  for (const [key, view] of views) { view.frame.hidden = key !== id; view.frame.id = key === id ? 'chat' : ''; }
+  element('history-panel').hidden = true;
+  const chat = surfaces.find(surface => surface.id === id)?.kind === 'ai';
+  for (const key of ['history', 'new-chat']) element<HTMLButtonElement>(key).disabled = !chat;
+  busy(!views.get(id)?.ready && ![...views.values()].some(view => view.ready)); renderTabs();
+}
+function loadSurface(id: string, focus = true) {
+  if (!views.has(id)) {
+    const frame = document.createElement('iframe');
+    frame.className = 'surface-frame'; frame.title = tabLabel(surfaces.find(surface => surface.id === id)!);
+    frame.setAttribute('sandbox', 'allow-scripts allow-downloads'); frame.hidden = true;
+    element('stage').prepend(frame);
+    views.set(id, { frame, token: '', epoch: 0, ready: false, pending: [] });
+  }
+  views.get(id)!.ready = false;
+  if (focus) activate(id);
+  return send({ type: 'open', surface: id });
+}
+function icon(name: string) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('aria-hidden', 'true');
+  const use = document.createElementNS(svg.namespaceURI, 'use'); use.setAttribute('href', `icons.svg#${name}`); svg.append(use); return svg;
+}
+async function closeTab(id: string) {
+  if (surfaces.length <= 1 || surfaces.find(surface => surface.id === id)?.running) return;
+  await send({ type: 'close', surface: id }); await send({ type: 'removeTab', surface: id });
+  document.getElementById(`tab-${id}`)?.parentElement?.classList.add('closing'); await new Promise(done => setTimeout(done, 160)); seenTabs.delete(id);
+  views.get(id)?.frame.remove(); views.delete(id);
+  surfaces = surfaces.filter(surface => surface.id !== id);
+  if (selected === id) { selected = ''; if (surfaces[0]) activate(surfaces[0].id); else { element<HTMLDetailsElement>('tab-picker').open = true; busy(false); } }
+  renderTabs();
+}
+function renderTabs() {
+  if (needsSelection(surfaces, selected, !element('signin').hidden)) { activate(initialSurface(surfaces, localStorage.getItem('vibes.surface'))!.id); return; }
+  element('tabs').replaceChildren(...surfaces.map((surface, index) => {
+    const item = document.createElement('div'); item.className = 'browser-tab'; item.onclick = event => { if (!(event.target as Element).closest('.tab-close')) activate(surface.id); }; item.dataset.active = String(surface.id === selected); if (!seenTabs.has(surface.id)) { seenTabs.add(surface.id); item.classList.add('entering'); }
+    const button = document.createElement('button'); button.className = 'tab-title'; button.role = 'tab'; button.id = `tab-${surface.id}`;
+    button.setAttribute('aria-selected', String(surface.id === selected)); button.tabIndex = surface.id === selected ? 0 : -1;
+    button.textContent = tabLabel(surface); button.title = button.textContent; button.onclick = () => activate(surface.id);
+    button.onkeydown = event => {
+      const next = event.key === 'ArrowRight' ? (index + 1) % surfaces.length : event.key === 'ArrowLeft' ? (index + surfaces.length - 1) % surfaces.length : event.key === 'Home' ? 0 : event.key === 'End' ? surfaces.length - 1 : -1;
+      if (next >= 0) { event.preventDefault(); activate(surfaces[next].id); document.getElementById(`tab-${surfaces[next].id}`)?.focus(); }
+    };
+    const close = document.createElement('button'); close.className = 'icon-btn tab-close'; close.append(icon('close'));
+    close.title = t('Close tab'); close.setAttribute('aria-label', t('Close {0}', tabLabel(surface))); close.disabled = !!surface.running;
+    close.hidden = surfaces.length <= 1; close.onclick = () => { void closeTab(surface.id).catch(fail); };
+    item.append(button, close); return item;
+  }));
+  element('tabs').querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+function optionIcon(entry: { id: string; icon?: string }) {
+  if (entry.id === 'browser' || entry.id === 'settings') { const svg = icon(entry.id === 'browser' ? 'globe' : 'gear'); svg.classList.add('option-icon'); return svg; }
+  const glyph = document.createElement('span'); glyph.className = 'option-icon platform-glyph'; glyph.setAttribute('aria-hidden', 'true');
+  if (entry.icon?.startsWith('data:image/svg+xml')) glyph.style.setProperty('--glyph', `url("${entry.icon}")`); return glyph;
+}
+function renderOptions(platforms: { id: string; label: string; icon?: string }[]) {
+  const entries = [...platforms, { id: 'browser', label: t('Browser') }, { id: 'settings', label: t('Settings') }];
+  element('platform-options').replaceChildren(...entries.map(entry => {
+    const button = document.createElement('button'); button.className = 'model-option'; button.role = 'menuitem';
+    const label = document.createElement('span'); label.textContent = entry.label; button.append(optionIcon(entry), label);
+    button.onclick = async () => {
+      button.disabled = true;
+      try { await send({ type: 'createTab', platform: entry.id }); element<HTMLDetailsElement>('tab-picker').open = false; }
+      catch (error) { fail(error); } finally { button.disabled = false; }
+    };
+    return button;
+  }));
+}
+function receive(event: Record<string, unknown>) {
+  if (event.type === 'shell' && typeof event.update === 'string') receive({ type: 'update', latest: event.update });
+  if (event.type === 'update' && typeof event.latest === 'string') { element('update-text').textContent = t('Version {0} is available. Update to keep using Arara Vibes.', event.latest); document.documentElement.dataset.update = 'true'; element('update').hidden = false; return; }
+  if (event.type === 'updateFailed') { element('update-text').textContent = t('Could not complete the action. Try again.'); return; }
+  if (event.type === 'preferences') { applyPreferences(event.preferences as VibesPreferences); return; }
+  if (event.type === 'shell') {
+    glass = event.glass === true; document.documentElement.dataset.glass = String(glass);
+    if (typeof event.locale === 'string' && !activeHost) localize(event.locale);
+    element('pin').setAttribute('aria-pressed', String(event.pinned));
+    element('expand').setAttribute('aria-expanded', String(event.expanded));
+    element('expand').title = t(event.expanded ? 'Collapse' : 'Expand chat'); element('expand').setAttribute('aria-label', element('expand').title);
+    element('expand').querySelector('use')?.setAttribute('href', `icons.svg#chevron-${event.expanded ? 'up' : 'down'}`);
+    document.body.dataset.expanded = String(event.expanded); return;
+  }
+  if (event.type === 'disconnected') { reset(); hostRequested = false; busy(true); void discover().catch(fail); return; }
+  if (event.type === 'openSurface' && typeof event.surface === 'string') {
+    requested = { id: event.surface, preserveFocus: event.preserveFocus === true };
+    if (surfaces.some(surface => surface.id === event.surface)) { if (!requested.preserveFocus) activate(requested.id); requested = undefined; }
+    return;
+  }
+  if (event.type === 'hello') {
+    surfaces = (event.surfaces as Surface[]).filter(surface => surface.tab !== false);
+    renderOptions((event.platforms ?? []) as { id: string; label: string; icon?: string }[]);
+    element('tab-strip').hidden = activeHost?.signedIn === false;
+    const initial = requested && surfaces.some(surface => surface.id === requested!.id) ? requested : { id: initialSurface(surfaces, selected || localStorage.getItem('vibes.surface'))?.id ?? '', preserveFocus: false };
+    if (activeHost?.signedIn !== false && !surfaces.some(surface => surface.kind === 'ai')) { busy(true); void send({ type: 'ensureTab' }).catch(fail); }
+    if (activeHost?.signedIn !== false) {
+      for (const surface of surfaces) if (!views.has(surface.id)) void loadSurface(surface.id, false).catch(fail);
+      if (initial.id && (!initial.preserveFocus || !selected)) activate(initial.id);
+    }
+    requested = undefined; renderTabs(); return;
+  }
+  const view = typeof event.surface === 'string' ? views.get(event.surface) : undefined;
+  if (event.type === 'document' && view) {
+    view.token = crypto.randomUUID(); view.epoch = Number(event.epoch); view.ready = false; view.pending = [];
+    const token = view.token;
+    void action('document', { key: event.surface, html: chatDocument(String(event.html), token, activeHost?.theme ?? {}, view.state, glass, document.documentElement.dataset.motion !== 'off') }).then(path => { if (view.token === token) view.frame.src = String(path); }).catch(fail); return;
+  }
+  if (event.type === 'event' && view && event.epoch === view.epoch) {
+    const message = event.message as { type?: string };
+    if (!view.ready) view.pending.push(message); else view.frame.contentWindow?.postMessage({ type: 'event', token: view.token, message }, '*');
+    if (event.surface === selected && ['done', 'live', 'state', 'browserState', 'view'].includes(message.type ?? '')) busy(false);
+    return;
+  }
+  if (event.type === 'error') { busy(false); feedback(typeof event.text === 'string' ? event.text : t('Could not complete the action. Try again.'), true); }
+  if (event.type === 'history') {
+    const list = element('conversations');
+    const items = event.conversations as { id: string; title: string; surface: string; hasMessages?: boolean }[];
+    list.replaceChildren(...items.filter(item => item.hasMessages !== false).slice(0, 5).map(item => {
+      const button = document.createElement('button'); button.className = 'conversation'; button.textContent = item.title;
+      button.onclick = () => { activate(item.surface); busy(true); void send({ type: 'conversation', surface: item.surface, id: item.id }).catch(fail); }; return button;
+    }));
+    if (!list.childElementCount) list.textContent = t('No conversations yet.');
+    element('history-panel').hidden = false;
+  }
+}
+function fail(error: unknown) {
+  if (!connected || !surfaces.length) { recover(); return; }
+  busy(false); feedback(error instanceof Error ? error.message : t('Could not complete the action. Try again.'), true); }
+addEventListener('message', event => {
+  const entry = [...views].find(([, view]) => event.source === view.frame.contentWindow && view.token && event.data?.token === view.token);
+  if (!entry) return;
+  const [id, view] = entry;
+  if (event.data.type === 'ready') {
+    view.ready = true;
+    for (const message of view.pending) view.frame.contentWindow?.postMessage({ type: 'event', token: view.token, message }, '*');
+    view.pending = []; if (id === selected) busy(false);
+  }
+  if (event.data.type === 'state') view.state = event.data.state;
+  if (event.data.type === 'input' && (event.data.message as { type?: string } | undefined)?.type === 'vibesPreferences') {
+    const frame = view.frame; const token = view.token;
+    void action('preferences', { preferences: (event.data.message as { preferences?: unknown }).preferences }).then(preferences => frame.contentWindow?.postMessage({ type: 'event', token, message: { type: 'vibesPreferences', preferences } }, '*')).catch(fail);
+    return;
+  }
+  if (event.data.type === 'input') void send({ type: 'input', surface: id, message: event.data.message }).catch(fail);
+  if (event.data.type === 'escape') void action('hide').catch(fail);
+});
+function bind(id: string, run: () => Promise<unknown>) {
+  const button = element<HTMLButtonElement>(id);
+  button.onclick = async () => { button.disabled = true; try { await run(); } catch (error) { fail(error); } finally { button.disabled = false; } };
+}
+bind('pin', () => action('pin')); bind('expand', () => action('expand')); bind('hide', () => action('hide'));
+bind('retry', async () => { element('recover').hidden = true; hostRequested = false; connected = false; activeHost = undefined; busy(true); await discover(); });
+bind('sign-in-copy', async () => { await action('copySignInLink'); feedback(t('Sign-in link copied. Paste it in your browser.')); });
+bind('update-install', async () => { element('update-text').textContent = t('Downloading the update…'); await action('installUpdate'); });
+bind('sign-in', async () => { await action('signIn'); await discover(); });
+bind('new-chat', () => send({ type: 'newConversation', surface: selected }));
+bind('history', () => send({ type: 'history', surface: selected, all: true }));
+bind('history-new', async () => { element('history-panel').hidden = true; await send({ type: 'newConversation', surface: selected }); });
+const closeHistory = () => { if (element('history-panel').hidden) return; element('history-panel').hidden = true; views.get(selected)?.frame.focus(); };
+addEventListener('pointerdown', event => { const target = event.target as Node; if (!element('history-panel').contains(target) && !element('history').contains(target)) closeHistory(); });
+addEventListener('blur', () => { if (document.activeElement?.tagName === 'IFRAME') { closeHistory(); element<HTMLDetailsElement>('tab-picker').open = false; } });
+addEventListener('keydown', event => { if (event.key === 'Escape') closeHistory(); });
+const stream = new EventSource('events');
+stream.onmessage = event => { try { receive(JSON.parse(event.data)); } catch (error) { fail(error); } };
+stream.onerror = () => { recover(); };
+localize(navigator.language); void onboarding().catch(() => undefined).finally(() => { onboarded = true; void discover().catch(fail); });
+setInterval(() => { void discover().catch(() => undefined); }, 3000);
+document.documentElement.dataset.ready = 'true';
+addEventListener('beforeunload', () => { clearTimeout(loadingTimeout); stream.close(); });
+
+addEventListener('keydown', event => { if (event.key === 'Escape' && element<HTMLDetailsElement>('tab-picker').open) { element<HTMLDetailsElement>('tab-picker').open = false; element('tab-picker').querySelector<HTMLElement>('summary')?.focus(); } });
+addEventListener('pointerdown', event => { if (!element('tab-picker').contains(event.target as Node)) element<HTMLDetailsElement>('tab-picker').open = false; });
+function placePicker() {
+  const picker = element<HTMLDetailsElement>('tab-picker'); const panel = picker.querySelector<HTMLElement>('.picker-panel'); if (!picker.open || !panel) return;
+  const anchor = picker.querySelector('summary')!.getBoundingClientRect();
+  panel.style.top = `${anchor.bottom + 4}px`; panel.style.visibility = 'visible';
+  panel.style.left = `${Math.max(8, Math.min(anchor.left, innerWidth - panel.offsetWidth - 8))}px`;
+}
+element('tab-picker').querySelector('summary')!.addEventListener('click', () => requestAnimationFrame(placePicker)); element('tab-picker').addEventListener('toggle', placePicker); addEventListener('resize', placePicker);
+Object.assign(window, { vibesSplash: () => { const node = element('loading'); if (node.dataset.off !== 'true') return; const logo = element<HTMLImageElement>('loading-logo'); logo.src = `logo-animated.svg?${Date.now()}`; node.dataset.off = 'false'; setTimeout(() => { if (views.get(selected)?.ready) node.dataset.off = 'true'; }, 1000); }, vibesCloseActiveTab: () => { if (selected) void closeTab(selected).catch(fail); } });
