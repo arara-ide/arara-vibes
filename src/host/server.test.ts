@@ -36,7 +36,7 @@ it('routes preferences, update and sign-in link actions through the shell', asyn
   await writeFile(join(directory, 'logo-animated.svg'), '<svg/>');
   const calls: unknown[] = [];
   const shell = await startShell(directory, { locale: 'en', state: () => ({ pinned: true, expanded: true, update: 'v9.9.9' }), run: async () => {},
-    preferences: async update => { calls.push(['preferences', update]); return { animations: false }; }, installUpdate: async () => { calls.push(['install']); return true; } });
+    preferences: async update => { calls.push(['preferences', update]); return { animations: false }; }, installUpdate: async () => { calls.push(['install']); return true; }, shortcutRecording: recording => { calls.push(['recording', recording]); } });
   cleanups.push(() => shell.close());
   const events = await fetch(new URL('events', shell.url));
   const reader = events.body!.getReader();
@@ -46,6 +46,8 @@ it('routes preferences, update and sign-in link actions through the shell', asyn
   expect(await (await post({ action: 'preferences', preferences: { animations: false } })).json()).toEqual({ animations: false });
   expect(await (await post({ action: 'installUpdate' })).json()).toBe(true);
   expect((await post({ action: 'copySignInLink' })).status).toBe(500);
-  expect(calls).toEqual([['preferences', { animations: false }], ['install']]);
+  expect((await post({ action: 'shortcutRecording', recording: true })).status).toBe(200);
+  expect((await post({ action: 'shortcutRecording', recording: 'yes' })).status).toBe(200);
+  expect(calls).toEqual([['preferences', { animations: false }], ['install'], ['recording', true], ['recording', false]]);
   expect((await fetch(new URL('logo-animated.svg?123', shell.url))).status).not.toBe(404);
 });

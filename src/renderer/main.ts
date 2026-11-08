@@ -252,6 +252,7 @@ addEventListener('message', event => {
     view.pending = []; if (id === selected) busy(false);
   }
   if (event.data.type === 'state') view.state = event.data.state;
+  if (event.data.type === 'input' && (event.data.message as { type?: string } | undefined)?.type === 'vibesShortcutRecording') { void action('shortcutRecording', { recording: (event.data.message as { recording?: unknown }).recording === true }).catch(fail); return; }
   if (event.data.type === 'input' && (event.data.message as { type?: string } | undefined)?.type === 'vibesPreferences') {
     const frame = view.frame; const token = view.token;
     void action('preferences', { preferences: (event.data.message as { preferences?: unknown }).preferences }).then(preferences => frame.contentWindow?.postMessage({ type: 'event', token, message: { type: 'vibesPreferences', preferences } }, '*')).catch(fail);

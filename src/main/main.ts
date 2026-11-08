@@ -7,7 +7,7 @@ import { companion } from '../host/companion';
 import { setLocale, t } from '../i18n';
 import { BackgroundHost, backgroundRuntime } from '../host/background';
 import { CHECK_INTERVAL_MS, checkForUpdate } from './update';
-import { loadPreferences, normalizePreferences, resolveLanguage, savePreferences, setLinuxAutostart, type Preferences } from './preferences';
+import { defaultShortcut, loadPreferences, normalizePreferences, resolveLanguage, savePreferences, setLinuxAutostart, type Preferences } from './preferences';
 
 const smoke = process.argv.includes('--smoke-test');
 const integration = process.argv.includes('--integration-test');
@@ -80,6 +80,10 @@ function registerShortcut(next: string, previous?: string) {
   if (previous) try { globalShortcut.register(previous, toggle); } catch { }
   return false;
 }
+function shortcutRecording(recording: boolean) {
+  if (recording) globalShortcut.unregister(preferences.shortcut);
+  else if (!globalShortcut.isRegistered(preferences.shortcut)) registerShortcut(preferences.shortcut);
+}
 let pendingUpdate: string | undefined;
 async function watchUpdates() {
   if (!app.isPackaged || process.env.ARARA_VIBES_DISABLE_UPDATES === '1') return;
@@ -94,15 +98,15 @@ async function installUpdate() {
   } catch { server?.emit({ type: 'updateFailed' }); return false; }
 }
 async function updatePreferences(update?: unknown) {
-  if (update === undefined) return preferences;
+  if (update === undefined) return { ...preferences, defaultShortcut: defaultShortcut() };
   const previous = preferences;
   preferences = normalizePreferences(update, preferences);
   savePreferences(preferencesFile(), preferences);
   if (previous.launchAtLogin !== preferences.launchAtLogin) try { applyLaunchAtLogin(preferences.launchAtLogin); } catch { preferences.launchAtLogin = previous.launchAtLogin; savePreferences(preferencesFile(), preferences); }
-  if (previous.shortcut !== preferences.shortcut && !registerShortcut(preferences.shortcut, previous.shortcut)) { preferences.shortcut = previous.shortcut; savePreferences(preferencesFile(), preferences); }
+  if (previous.shortcut !== preferences.shortcut && !registerShortcut(preferences.shortcut, globalShortcut.isRegistered(previous.shortcut) ? previous.shortcut : undefined)) { preferences.shortcut = previous.shortcut; savePreferences(preferencesFile(), preferences); registerShortcut(preferences.shortcut); }
   if (previous.showInBar !== preferences.showInBar) applyShowInBar(preferences.showInBar);
   if (previous.language !== preferences.language) { setLocale(resolveLanguage(preferences.language, app.getLocale())); await server?.shutdown(); background = undefined; }
-  return preferences;
+  return { ...preferences, defaultShortcut: defaultShortcut() };
 }
 async function run(action: string) {
   if (abort.signal.aborted) return;
@@ -144,12 +148,12 @@ else {
     preferences = loadPreferences(preferencesFile());
     const locale = resolveLanguage(preferences.language, app.getLocale());
     setLocale(locale);
-    server = await startShell(__dirname, { run, state: () => ({ pinned, expanded, glass, update: pendingUpdate }), locale, preferences: updatePreferences, installUpdate });
+    server = await startShell(__dirname, { run, state: () => ({ pinned, expanded, glass, update: pendingUpdate }), locale, preferences: updatePreferences, installUpdate, shortcutRecording });
     void watchUpdates();
     const area = screen.getPrimaryDisplay().workArea;
     const width = Math.min(420, area.width);
     expandedHeight = Math.min(480, area.height - 40);
-    window = new BrowserWindow({ width, height: expandedHeight, minWidth: 360, minHeight: 360,
+    window = new BrowserWindow({ width, height: expandedHeight, minWidth: 360, minHeight: 360, maxWidth: Math.max(width, 520), maximizable: false, fullscreenable: false,
       x: area.x + Math.round((area.width - width) / 2), y: area.y + 20,
       frame: false, alwaysOnTop: true, transparent: process.platform === 'darwin', visualEffectState: 'active', backgroundColor: '#1b1d21', show: false,
       webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
