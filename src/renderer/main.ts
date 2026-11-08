@@ -166,14 +166,14 @@ function renderTabs() {
   element('tabs').querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
 function optionIcon(entry: { id: string; icon?: string }) {
-  if (entry.id === 'browser' || entry.id === 'settings') { const svg = icon(entry.id === 'browser' ? 'globe' : 'gear'); svg.classList.add('option-icon'); return svg; }
+  if (entry.id === 'browser' || entry.id === 'sharing' || entry.id === 'settings') { const svg = icon(entry.id === 'browser' ? 'globe' : entry.id === 'sharing' ? 'sign-in' : 'gear'); svg.classList.add('option-icon'); return svg; }
   const glyph = document.createElement('span'); glyph.className = 'option-icon platform-glyph'; glyph.setAttribute('aria-hidden', 'true');
   if (entry.icon?.startsWith('data:image/svg+xml')) glyph.style.setProperty('--glyph', `url("${entry.icon}")`); return glyph;
 }
 function renderOptions(platforms: { id: string; label: string; icon?: string }[]) {
-  const entries = [...platforms, { id: 'browser', label: t('Browser') }, { id: 'settings', label: t('Settings') }];
+  const entries = [...platforms, { id: 'browser', label: t('Browser') }, { id: 'sharing', label: t('Share limits') }, { id: 'settings', label: t('Settings') }];
   element('platform-options').replaceChildren(...entries.map(entry => {
-    const button = document.createElement('button'); button.className = 'model-option'; button.role = 'menuitem';
+    const button = document.createElement('button'); button.className = 'model-option'; button.dataset.platform = entry.id; button.role = 'menuitem';
     const label = document.createElement('span'); label.textContent = entry.label; button.append(optionIcon(entry), label);
     button.onclick = async () => {
       button.disabled = true;
