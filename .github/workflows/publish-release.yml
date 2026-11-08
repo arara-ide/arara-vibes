@@ -1,0 +1,44 @@
+name: Publish platform
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
+      artifact:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: release-${{ inputs.version }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact }}
+          path: dist
+      - name: Create release or add platform
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v${{ inputs.version }}
+        run: |
+          rm -f dist/SHA256SUMS
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+              --title "Arara Vibes $TAG" --generate-notes
+          fi
+          gh release upload "$TAG" dist/* --clobber --repo "$GITHUB_REPOSITORY"
+          mkdir all && gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir all --skip-existing
+          rm -f all/SHA256SUMS
+          (cd all && sha256sum * > SHA256SUMS)
+          gh release upload "$TAG" all/SHA256SUMS --clobber --repo "$GITHUB_REPOSITORY"

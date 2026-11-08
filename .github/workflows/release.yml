@@ -1,4 +1,4 @@
-name: Release
+name: Build
 
 on:
   push:
@@ -45,105 +45,80 @@ jobs:
           patch=$(( 10000 + (10#$(date -u +%j) - 1) * 24 + 10#$(date -u +%H) ))
           echo "value=${base}.${patch}" >> "$GITHUB_OUTPUT"
 
-  build:
+  linux:
     needs: version
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-latest
-            platform: mac
-          - os: ubuntu-latest
-            platform: linux
-          - os: windows-latest
-            platform: win
-    runs-on: ${{ matrix.os }}
-    env:
-      ARARA_CODE_SOURCE: .sources/arara-code
-      ARARA_MACOS_SIGN_IDENTITY: ${{ vars.ARARA_MACOS_SIGN_IDENTITY }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-        with:
-          repository: arara-ide/arara-code
-          ref: ${{ github.ref_name }}
-          path: .sources/arara-code
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - run: npm ci
-      - run: npm version "${{ needs.version.outputs.value }}" --no-git-tag-version --allow-same-version
-      - run: npm test
-        env:
-          ARARA_CODE_SOURCE: .sources/arara-code
-      - run: npm run build
-        env:
-          ARARA_CODE_SOURCE: .sources/arara-code
-      - name: Import persistent macOS signing identity
-        if: matrix.platform == 'mac'
-        env:
-          ARARA_MACOS_SIGN_P12_BASE64: ${{ secrets.ARARA_MACOS_SIGN_P12_BASE64 }}
-          ARARA_MACOS_SIGN_PASSWORD: ${{ secrets.ARARA_MACOS_SIGN_PASSWORD }}
-        run: bash .sources/arara-code/scripts/import-macos-signing.sh
-      - name: Package application
-        run: npm run package:${{ matrix.platform }}
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: arara-vibes-${{ matrix.platform }}-${{ needs.version.outputs.value }}
-          retention-days: 14
-          if-no-files-found: error
-          path: |
-            release/*.dmg
-            release/*.zip
-            release/*.AppImage
-            release/*.deb
-            release/*.exe
+    uses: ./.github/workflows/build-platform.yml
+    with:
+      version: ${{ needs.version.outputs.value }}
+      platform: linux
+      runner: ubuntu-latest
+    secrets: inherit
 
-      - name: Remove temporary signing keychain
-        if: always() && matrix.platform == 'mac' && env.ARARA_MACOS_SIGN_KEYCHAIN != ''
-        run: security delete-keychain "$ARARA_MACOS_SIGN_KEYCHAIN"
+  windows:
+    needs: version
+    uses: ./.github/workflows/build-platform.yml
+    with:
+      version: ${{ needs.version.outputs.value }}
+      platform: windows
+      runner: windows-latest
+    secrets: inherit
 
-  checksums:
-    needs: [version, build]
-    if: github.ref == 'refs/heads/development'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-      - run: |
-          mkdir -p files && find artifacts -type f -exec cp {} files/ \;
-          cd files && sha256sum * > SHA256SUMS
-      - uses: actions/upload-artifact@v4
-        with:
-          name: arara-vibes-${{ needs.version.outputs.value }}-SHA256SUMS
-          path: files/SHA256SUMS
-          retention-days: 14
+  macos-x64:
+    needs: version
+    uses: ./.github/workflows/build-platform.yml
+    with:
+      version: ${{ needs.version.outputs.value }}
+      platform: macos-x64
+      runner: macos-15-intel
+      arch: x64
+    secrets: inherit
 
-  publish:
-    needs: [version, build]
+  macos-arm64:
+    needs: version
+    uses: ./.github/workflows/build-platform.yml
+    with:
+      version: ${{ needs.version.outputs.value }}
+      platform: macos-arm64
+      runner: macos-15
+      arch: arm64
+    secrets: inherit
+
+  release-linux:
+    if: github.ref == 'refs/heads/main'
+    needs: [version, linux]
     permissions:
       contents: write
+    uses: ./.github/workflows/publish-release.yml
+    with:
+      version: ${{ needs.version.outputs.value }}
+      artifact: linux
+
+  release-windows:
     if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-      - name: Prepare release files
-        run: |
-          mkdir -p release-files
-          find artifacts -type f -exec cp {} release-files/ \;
-          cd release-files
-          sha256sum * > SHA256SUMS || shasum -a 256 * > SHA256SUMS
-      - name: Create GitHub Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          tag="v${{ needs.version.outputs.value }}"
-          gh release create "$tag" release-files/* \
-            --title "Arara Vibes ${tag}" \
-            --generate-notes \
-            --repo "$GITHUB_REPOSITORY"
+    needs: [version, windows]
+    permissions:
+      contents: write
+    uses: ./.github/workflows/publish-release.yml
+    with:
+      version: ${{ needs.version.outputs.value }}
+      artifact: windows
+
+  release-macos-x64:
+    if: github.ref == 'refs/heads/main'
+    needs: [version, macos-x64]
+    permissions:
+      contents: write
+    uses: ./.github/workflows/publish-release.yml
+    with:
+      version: ${{ needs.version.outputs.value }}
+      artifact: macos-x64
+
+  release-macos-arm64:
+    if: github.ref == 'refs/heads/main'
+    needs: [version, macos-arm64]
+    permissions:
+      contents: write
+    uses: ./.github/workflows/publish-release.yml
+    with:
+      version: ${{ needs.version.outputs.value }}
+      artifact: macos-arm64

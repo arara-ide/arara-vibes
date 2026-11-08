@@ -1,4 +1,4 @@
-import { relative } from 'node:path';
+import { relative, sep } from 'node:path';
 import { EventEmitter, DisposableImpl, type Event, type Disposable } from './events';
 import { Uri } from './uri';
 import { WorkspaceFs } from './workspaceFs';
@@ -71,7 +71,7 @@ export class Workspace {
     const targetPath = typeof pathOrUri === 'string' ? pathOrUri : pathOrUri.fsPath;
     const base = this.folders[0]?.uri.fsPath;
     if (!base) return targetPath;
-    const rel = relative(base, targetPath);
+    const rel = relative(base, targetPath).split(sep).join('/');
     if (includeWorkspaceFolder && this.folders[0]) {
       return `${this.folders[0].name}/${rel}`;
     }
