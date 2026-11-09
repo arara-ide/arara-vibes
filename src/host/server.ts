@@ -48,7 +48,7 @@ export async function startShell(directory: string, actions: ShellActions) {
         else if (input.action === 'installUpdate' && actions.installUpdate) result = await actions.installUpdate();
         else if (input.action === 'signIn') result = await connection.signIn();
         else if (input.action === 'disconnect') connection.disconnect();
-        else if (['pin', 'expand', 'hide', 'startHost'].includes(input.action)) { result = await actions.run(input.action); emit({ type: 'shell', ...actions.state() }); }
+        else if (['expand', 'hide', 'startHost'].includes(input.action)) { result = await actions.run(input.action); emit({ type: 'shell', ...actions.state() }); }
         else { response.writeHead(400).end(); return; }
         response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify(result ?? null)); return;
       }

@@ -38,3 +38,21 @@ it('restores the sharing tab without losing conversation tabs', () => {
   expect(needsSelection(tabs, 'sharing', false)).toBe(false);
   expect(initialSurface(tabs.slice(0, 1), 'sharing')).toBe(tabs[0]);
 });
+
+import { moveTab } from './tabs';
+
+it('moves a tab between its neighbors or to the end without mutating the original order', () => {
+  const tabs = [{ id: 'a' }, { id: 'b' }, { id: 'settings' }];
+  expect(moveTab(tabs, 'settings', 'b').map(tab => tab.id)).toEqual(['a', 'settings', 'b']);
+  expect(moveTab(tabs, 'a').map(tab => tab.id)).toEqual(['b', 'settings', 'a']);
+  expect(moveTab(tabs, 'b', 'a').map(tab => tab.id)).toEqual(['b', 'a', 'settings']);
+  expect(tabs.map(tab => tab.id)).toEqual(['a', 'b', 'settings']);
+});
+
+it('keeps one tab, missing targets, self drops and unknown tabs unchanged', () => {
+  const tabs = [{ id: 'a' }, { id: 'b' }];
+  expect(moveTab(tabs.slice(0, 1), 'a')).toEqual([{ id: 'a' }]);
+  expect(moveTab(tabs, 'a', 'a')).toBe(tabs);
+  expect(moveTab(tabs, 'missing', 'a')).toBe(tabs);
+  expect(moveTab(tabs, 'a', 'missing')).toBe(tabs);
+});

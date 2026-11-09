@@ -6,3 +6,11 @@ export function initialSurface(surfaces: Surface[], saved: string | null) {
 export function needsSelection(surfaces: Surface[], selected: string, signedOut: boolean) {
   return !signedOut && surfaces.length > 0 && !surfaces.some(surface => surface.id === selected);
 }
+
+export function moveTab<T extends { id: string }>(tabs: T[], id: string, before?: string): T[] {
+  const tab = tabs.find(item => item.id === id);
+  if (tabs.length < 2 || !tab || before === id || (before !== undefined && !tabs.some(item => item.id === before))) return tabs;
+  const ordered = tabs.filter(item => item !== tab);
+  ordered.splice(before === undefined ? ordered.length : ordered.findIndex(item => item.id === before), 0, tab);
+  return ordered;
+}

@@ -14,5 +14,5 @@ await bundle(resolve(code, 'extensions/arara-update/src/companion.js'), 'compani
 for (const file of ['index.html', 'shell.css', 'tokens.css', 'logo.svg', 'logo-white.svg', 'logo-animated.svg']) cpSync(resolve(root, 'src/renderer', file), resolve(root, 'dist', file));
 cpSync(resolve(root, 'assets/icons.svg'), resolve(root, 'dist/icons.svg'));
 cpSync(resolve(root, 'assets/codicons-LICENSE'), resolve(root, 'dist/codicons-LICENSE'));
-cpSync(resolve(code, 'branding/msix/Square44x44Logo.png'), resolve(root, 'dist/tray.png'));
+for (const file of ['tray-white.png', 'tray-white@2x.png']) cpSync(resolve(root, 'assets', file), resolve(root, 'dist', file));
 process.stdout.write('Build completed: public shell and companion downloader; no Arara AI assets bundled.\n');

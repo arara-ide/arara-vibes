@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run && node --test scripts/start.test.mjs scripts/sign-macos.test.mjs",
     "test:smoke": "env -u ELECTRON_RUN_AS_NODE electron . --smoke-test",
+    "test:tabs": "node scripts/test-tab-drag.mjs",
     "build": "tsc --noEmit && node scripts/build.mjs",
     "lint": "tsc --noEmit",
     "check:i18n": "node scripts/check-i18n.mjs",
@@ -36,7 +37,8 @@
       "dist/tokens.css",
       "dist/logo.svg",
       "dist/logo-white.svg",
-      "dist/tray.png",
+      "dist/tray-white.png",
+      "dist/tray-white@2x.png",
       "package.json",
       "dist/icons.svg",
       "dist/codicons-LICENSE"
