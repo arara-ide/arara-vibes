@@ -9,3 +9,5 @@ Siga `../AGENTS.md` e `../CLAUDE.md`. Operação e arquitetura em `../ac-docs/do
 - A língua acompanha a escolha do Arara Code, com fallback do sistema e inglês, salvo quando a pessoa escolhe um idioma em Configurações › Geral do Vibes; todo texto da moldura tem catálogos en/pt/es.
 - Animações ficam ligadas por padrão e só a opção Animações (Geral) as desliga; `prefers-reduced-motion` do sistema não interfere.
 - Verifique `npm run typecheck`, `npm run lint`, `npm test`, `npm run check:i18n`, `npm run build` e `node ../arara-ai/scripts/test-vibes-ide.cjs --app`, com dados isolados.
+
+Em conexão com o Arara Vibes, o PWA não exibe o seletor Arara Chat/Arara Bot. O host anuncia plataformas disponíveis, incluindo as sem guia, e a ação autenticada `createConversation` cria uma guia dinâmica com deduplicação por pedido. Catálogo, criação e documentos usam o canal direto/relay cifrado existente; o backend não recebe conteúdo. A fila usa o kit original, com texto de uma linha centralizado e lixeira sem fundo à esquerda, preservando sincronização e despacho único.

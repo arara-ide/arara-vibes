@@ -23,6 +23,7 @@ it('confines the browser shell, rejects cross-origin actions and serves chat doc
   const post = (input: unknown, extra = {}) => fetch(new URL('action', shell.url), { method: 'POST', headers: { 'Content-Type': 'application/json', ...extra }, body: JSON.stringify(input) });
   expect((await post({ action: 'hide' }, { Origin: 'https://attacker.test' })).status).toBe(403);
   expect((await post({ action: 'unknown' })).status).toBe(400);
+  expect((await post({ action: 'pin' })).status).toBe(400);
   const path = await (await post({ action: 'document', html: '<html>Original chat</html>' })).json();
   const chat = await fetch(new URL(path, shell.url));
   expect(await chat.text()).toContain('Original chat');

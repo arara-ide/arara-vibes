@@ -59,7 +59,7 @@ html[data-glass="true"] #loading, html[data-glass="true"] #signin, html[data-gla
 .picker-heading { font-size: var(--font-small); font-weight: 550; padding: var(--space-1) var(--space-2); }
 .option-list { display: flex; flex-direction: column; }
 .model-option { display: flex; align-items: center; justify-content: flex-start; gap: var(--space-2); text-align: left; padding: var(--space-2) var(--space-3); }
-.option-icon { width: var(--glyph-size); height: var(--glyph-size); flex: none; }
+.option-icon { fill: currentColor; width: var(--glyph-size); height: var(--glyph-size); flex: none; }
 .platform-glyph { background: currentColor; -webkit-mask: var(--glyph) center / contain no-repeat; mask: var(--glyph) center / contain no-repeat; }
 html[data-glass="true"] html[data-glass="true"] #recover { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-3); height: 100%; text-align: center; padding: var(--space-4); }
 #recover[hidden] { display: none; }
@@ -86,7 +86,6 @@ html[data-glass="true"] body, html[data-glass="true"] #vibes { border-radius: va
 #tab-strip { border-top: 1px solid var(--vscode-widget-border); gap: var(--space-3); }
 .browser-tab, .browser-tab[data-active="true"] { border-radius: var(--tab-radius) var(--tab-radius) 0 0; }
 .browser-tab[data-active="true"] { border-bottom: 1px solid var(--vscode-editor-background); margin-bottom: -1px; height: calc(var(--tab-height) + 1px); }
-html[data-glass="true"] .browser-tab[data-active="true"] { background: rgb(255 255 255 / 6%); border-bottom-color: transparent; box-shadow: 0 1px 0 0 rgb(0 0 0 / 0%); }
 .tab-title { font-size: var(--vscode-font-size); }
 .tab-close, #tab-picker summary { width: var(--tab-close-size); height: var(--tab-close-size); min-height: var(--tab-close-size); padding: var(--tab-close-pad); border-radius: 50%; background: var(--vscode-toolbar-hoverBackground); }
 .tab-close { background: transparent; }
@@ -141,3 +140,6 @@ html:has(#loading:not([data-off="true"])) #brand-logo { opacity: 0; transition: 
 #tabs, #tab-picker, .browser-tab, .tab-close, .picker-panel { -webkit-app-region: no-drag; }
 #titlebar { padding-left: 10px; }
 .browser-tab[data-active="true"] { border: 1px solid var(--vscode-widget-border); }
+.browser-tab.tab-drag-source { opacity: var(--tab-drag-opacity); }
+.tab-drag-preview { position: fixed; top: -100vh; left: 0; opacity: 1; pointer-events: none; animation: none; background: var(--vscode-editor-background); }
+.tab-drop-marker { position: fixed; width: var(--tab-drop-width); background: var(--vscode-focusBorder); pointer-events: none; z-index: 30; border-radius: var(--radius-xs); }

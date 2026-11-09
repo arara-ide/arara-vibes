@@ -34,3 +34,4 @@
 }
 :root { --tab-min-width: 72px; --tab-max-width: 200px; --tab-menu-width: 240px; }
 :root { --tab-height: 30px; --tab-close-size: 22px; --tab-close-glyph: 10px; --tab-close-pad: 6px; --tab-radius: 14px; --window-radius: 18px; }
+:root { --tab-drop-width: 2px; --tab-drag-opacity: .35; }

@@ -1,7 +1,8 @@
 import { t, setLocale } from '../i18n';
 import { chatDocument } from './document';
 import type { HostInfo } from '../host/connection';
-import { tabLabel, initialSurface, needsSelection, type Surface } from './tabs';
+import { tabLabel, initialSurface, needsSelection, moveTab, type Surface } from './tabs';
+import { insideDragViewport, tabDropDestination, tabDragVelocity, tabDragScroll, type DragPoint } from './tabDrag';
 
 const element = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 interface View { frame: HTMLIFrameElement; token: string; epoch: number; ready: boolean; pending: unknown[]; state?: unknown }
@@ -18,6 +19,64 @@ document.documentElement.dataset.mac = String(/Mac/.test(navigator.platform));
 let requested: { id: string; preserveFocus: boolean } | undefined;
 const seenTabs = new Set<string>();
 let loadingTimeout: ReturnType<typeof setTimeout> | undefined;
+let dragged: string | undefined;
+let dragPreview: HTMLElement | undefined;
+let dragPoint: DragPoint | undefined;
+let dragFrame = 0;
+let dragAt = 0;
+let dragScroll: number | undefined;
+let revealedSelection = '';
+const dropMarker = document.createElement('div'); dropMarker.className = 'tab-drop-marker'; dropMarker.hidden = true; dropMarker.setAttribute('aria-hidden', 'true'); document.body.append(dropMarker);
+
+function endDrag() {
+  stopDragFeedback(); dragged = undefined; dragPreview?.remove(); dragPreview = undefined;
+  element('tab-strip').style.overflowX = '';
+  document.querySelector('.tab-drag-source')?.classList.remove('tab-drag-source');
+  renderTabs();
+}
+
+function stopDragFeedback() {
+  cancelAnimationFrame(dragFrame); dragFrame = 0; dragAt = 0; dragScroll = undefined; dragPoint = undefined; dropMarker.hidden = true;
+}
+
+function dragGeometry() {
+  const strip = element('tab-strip').getBoundingClientRect();
+  const tabs = [...element('tabs').querySelectorAll<HTMLElement>('.browser-tab')].map(tab => ({ id: tab.dataset.surface!, ...tab.getBoundingClientRect().toJSON() })) as { id: string; left: number; right: number; top: number; bottom: number }[];
+  const bounds = element('tabs').getBoundingClientRect();
+  return { tabs, viewport: { left: Math.max(strip.left, bounds.left), right: Math.min(strip.right, bounds.right), top: Math.max(strip.top, bounds.top), bottom: Math.min(strip.bottom, bounds.bottom) } };
+}
+
+function updateDragFeedback() {
+  if (!dragged || !dragPoint) { dropMarker.hidden = true; return; }
+  const { tabs, viewport } = dragGeometry();
+  const target = tabDropDestination(tabs, dragged, dragPoint, viewport);
+  dropMarker.hidden = !target;
+  if (!target) return;
+  const width = parseFloat(getComputedStyle(dropMarker).width);
+  dropMarker.style.left = `${Math.max(viewport.left, Math.min(viewport.right - width, target.left - width / 2))}px`;
+  dropMarker.style.top = `${target.top}px`; dropMarker.style.height = `${target.bottom - target.top}px`;
+}
+
+function scrollDraggedTabs(now: number) {
+  dragFrame = 0;
+  if (!dragged || !dragPoint) return;
+  const strip = element('tab-strip');
+  const { viewport } = dragGeometry();
+  const maxScroll = strip.scrollWidth - strip.clientWidth;
+  const position = dragScroll ?? strip.scrollLeft;
+  const velocity = tabDragVelocity(dragPoint, viewport, position, maxScroll);
+  if (!velocity) { dragScroll = undefined; dragAt = 0; updateDragFeedback(); return; }
+  dragScroll = tabDragScroll(position, velocity, dragAt ? now - dragAt : 0, maxScroll);
+  strip.scrollTo({ left: dragScroll, behavior: 'instant' }); dragAt = now;
+  updateDragFeedback(); dragFrame = requestAnimationFrame(scrollDraggedTabs);
+}
+
+async function reorder(id: string, before?: string) {
+  const next = moveTab(surfaces, id, before);
+  if (next.every((surface, index) => surface.id === surfaces[index]?.id)) return;
+  await send({ type: 'reorderTabs', order: next.map(surface => surface.id) });
+  surfaces = next; renderTabs();
+}
 
 async function action(action: string, extra: Record<string, unknown> = {}): Promise<unknown> {
   const response = await fetch('action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, ...extra }) });
@@ -44,8 +103,9 @@ function busy(loading: boolean) {
 }
 function reset() {
   for (const view of views.values()) view.frame.remove();
-  views.clear(); surfaces = [];
-  for (const id of ['history', 'new-chat']) element<HTMLButtonElement>(id).disabled = true;
+  views.clear(); surfaces = []; revealedSelection = '';
+  if (dragged) endDrag();
+  element<HTMLButtonElement>('history').disabled = true;
   connected = false; selected = ''; busy(false);
   element('signin').hidden = true; element('history-panel').hidden = true; element('tab-strip').hidden = true;
 }
@@ -119,7 +179,7 @@ function activate(id: string) {
   for (const [key, view] of views) { view.frame.hidden = key !== id; view.frame.id = key === id ? 'chat' : ''; }
   element('history-panel').hidden = true;
   const chat = surfaces.find(surface => surface.id === id)?.kind === 'ai';
-  for (const key of ['history', 'new-chat']) element<HTMLButtonElement>(key).disabled = !chat;
+  element<HTMLButtonElement>('history').disabled = !chat;
   busy(!views.get(id)?.ready && ![...views.values()].some(view => view.ready)); renderTabs();
 }
 function loadSurface(id: string, focus = true) {
@@ -148,13 +208,29 @@ async function closeTab(id: string) {
   renderTabs();
 }
 function renderTabs() {
+  if (dragged) return;
   if (needsSelection(surfaces, selected, !element('signin').hidden)) { activate(initialSurface(surfaces, localStorage.getItem('vibes.surface'))!.id); return; }
   element('tabs').replaceChildren(...surfaces.map((surface, index) => {
     const item = document.createElement('div'); item.className = 'browser-tab'; item.onclick = event => { if (!(event.target as Element).closest('.tab-close')) activate(surface.id); }; item.dataset.active = String(surface.id === selected); if (!seenTabs.has(surface.id)) { seenTabs.add(surface.id); item.classList.add('entering'); }
+    item.dataset.surface = surface.id; item.draggable = surfaces.length > 1;
+    item.ondragstart = event => {
+      if (surfaces.length < 2 || !event.dataTransfer || (event.target as Element).closest('.tab-close')) { event.preventDefault(); return; }
+      dragged = surface.id; event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', surface.id);
+      element('tab-strip').style.overflowX = 'hidden';
+      dragPreview = item.cloneNode(true) as HTMLElement; dragPreview.classList.add('tab-drag-preview'); dragPreview.classList.remove('entering'); document.body.append(dragPreview);
+      dragPreview.inert = true; dragPreview.setAttribute('aria-hidden', 'true');
+      event.dataTransfer.setDragImage(dragPreview, event.offsetX, event.offsetY);
+      requestAnimationFrame(() => { if (dragged === surface.id) item.classList.add('tab-drag-source'); });
+    };
+    item.ondragend = endDrag;
     const button = document.createElement('button'); button.className = 'tab-title'; button.role = 'tab'; button.id = `tab-${surface.id}`;
     button.setAttribute('aria-selected', String(surface.id === selected)); button.tabIndex = surface.id === selected ? 0 : -1;
     button.textContent = tabLabel(surface); button.title = button.textContent; button.onclick = () => activate(surface.id);
     button.onkeydown = event => {
+      if (event.altKey && event.shiftKey && ['ArrowLeft', 'ArrowRight'].includes(event.key) && surfaces.length > 1) {
+        event.preventDefault(); const target = event.key === 'ArrowLeft' ? surfaces[Math.max(0, index - 1)]?.id : surfaces[index + 2]?.id;
+        void reorder(surface.id, target).then(() => document.getElementById(`tab-${surface.id}`)?.focus()).catch(fail); return;
+      }
       const next = event.key === 'ArrowRight' ? (index + 1) % surfaces.length : event.key === 'ArrowLeft' ? (index + surfaces.length - 1) % surfaces.length : event.key === 'Home' ? 0 : event.key === 'End' ? surfaces.length - 1 : -1;
       if (next >= 0) { event.preventDefault(); activate(surfaces[next].id); document.getElementById(`tab-${surfaces[next].id}`)?.focus(); }
     };
@@ -163,8 +239,35 @@ function renderTabs() {
     close.hidden = surfaces.length <= 1; close.onclick = () => { void closeTab(surface.id).catch(fail); };
     item.append(button, close); return item;
   }));
-  element('tabs').querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  if (selected !== revealedSelection) {
+    element('tabs').querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    revealedSelection = selected;
+  }
 }
+function dragOver(event: DragEvent) {
+  if (!dragged || surfaces.length < 2) return;
+  dragPoint = { x: event.clientX, y: event.clientY };
+  if (!insideDragViewport(dragPoint, dragGeometry().viewport)) { stopDragFeedback(); return; }
+  event.preventDefault(); if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+  updateDragFeedback();
+  if (!dragFrame) dragFrame = requestAnimationFrame(scrollDraggedTabs);
+}
+document.addEventListener('dragenter', dragOver);
+document.addEventListener('dragover', dragOver);
+document.addEventListener('dragleave', event => {
+  if (!dragged) return;
+  if (!insideDragViewport({ x: event.clientX, y: event.clientY }, dragGeometry().viewport)
+    || event.relatedTarget instanceof Node && !element('tab-strip').contains(event.relatedTarget)) stopDragFeedback();
+});
+addEventListener('blur', stopDragFeedback);
+addEventListener('resize', stopDragFeedback);
+document.addEventListener('drop', event => {
+  if (!dragged) return;
+  event.preventDefault(); const id = dragged;
+  const { tabs, viewport } = dragGeometry();
+  const target = tabDropDestination(tabs, id, { x: event.clientX, y: event.clientY }, viewport);
+  endDrag(); if (target) void reorder(id, target.before).catch(fail);
+});
 function optionIcon(entry: { id: string; icon?: string }) {
   if (entry.id === 'browser' || entry.id === 'sharing' || entry.id === 'settings') { const svg = icon(entry.id === 'browser' ? 'globe' : entry.id === 'sharing' ? 'sign-in' : 'gear'); svg.classList.add('option-icon'); return svg; }
   const glyph = document.createElement('span'); glyph.className = 'option-icon platform-glyph'; glyph.setAttribute('aria-hidden', 'true');
@@ -191,7 +294,6 @@ function receive(event: Record<string, unknown>) {
   if (event.type === 'shell') {
     glass = event.glass === true; document.documentElement.dataset.glass = String(glass);
     if (typeof event.locale === 'string' && !activeHost) localize(event.locale);
-    element('pin').setAttribute('aria-pressed', String(event.pinned));
     element('expand').setAttribute('aria-expanded', String(event.expanded));
     element('expand').title = t(event.expanded ? 'Collapse' : 'Expand chat'); element('expand').setAttribute('aria-label', element('expand').title);
     element('expand').querySelector('use')?.setAttribute('href', `icons.svg#chevron-${event.expanded ? 'up' : 'down'}`);
@@ -208,7 +310,7 @@ function receive(event: Record<string, unknown>) {
     renderOptions((event.platforms ?? []) as { id: string; label: string; icon?: string }[]);
     element('tab-strip').hidden = activeHost?.signedIn === false;
     const initial = requested && surfaces.some(surface => surface.id === requested!.id) ? requested : { id: initialSurface(surfaces, selected || localStorage.getItem('vibes.surface'))?.id ?? '', preserveFocus: false };
-    if (activeHost?.signedIn !== false && !surfaces.some(surface => surface.kind === 'ai')) { busy(true); void send({ type: 'ensureTab' }).catch(fail); }
+    if (activeHost?.signedIn !== false && !surfaces.length) { busy(true); void send({ type: 'ensureTab' }).catch(fail); }
     if (activeHost?.signedIn !== false) {
       for (const surface of surfaces) if (!views.has(surface.id)) void loadSurface(surface.id, false).catch(fail);
       if (initial.id && (!initial.preserveFocus || !selected)) activate(initial.id);
@@ -265,12 +367,11 @@ function bind(id: string, run: () => Promise<unknown>) {
   const button = element<HTMLButtonElement>(id);
   button.onclick = async () => { button.disabled = true; try { await run(); } catch (error) { fail(error); } finally { button.disabled = false; } };
 }
-bind('pin', () => action('pin')); bind('expand', () => action('expand')); bind('hide', () => action('hide'));
+bind('expand', () => action('expand')); bind('hide', () => action('hide'));
 bind('retry', async () => { element('recover').hidden = true; hostRequested = false; connected = false; activeHost = undefined; busy(true); await discover(); });
 bind('sign-in-copy', async () => { await action('copySignInLink'); feedback(t('Sign-in link copied. Paste it in your browser.')); });
 bind('update-install', async () => { element('update-text').textContent = t('Downloading the update…'); await action('installUpdate'); });
 bind('sign-in', async () => { await action('signIn'); await discover(); });
-bind('new-chat', () => send({ type: 'newConversation', surface: selected }));
 bind('history', () => send({ type: 'history', surface: selected, all: true }));
 bind('history-new', async () => { element('history-panel').hidden = true; await send({ type: 'newConversation', surface: selected }); });
 const closeHistory = () => { if (element('history-panel').hidden) return; element('history-panel').hidden = true; views.get(selected)?.frame.focus(); };
