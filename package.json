@@ -39,6 +39,7 @@
       "dist/logo-white.svg",
       "dist/tray-white.png",
       "dist/tray-white@2x.png",
+      "dist/icon.png",
       "package.json",
       "dist/icons.svg",
       "dist/codicons-LICENSE"
@@ -49,13 +50,15 @@
         "zip"
       ],
       "category": "public.app-category.developer-tools",
-      "sign": "scripts/sign-macos.cjs"
+      "sign": "scripts/sign-macos.cjs",
+      "icon": "build/icon.icns"
     },
     "win": {
       "target": [
         "nsis",
         "zip"
-      ]
+      ],
+      "icon": "build/icon.png"
     },
     "linux": {
       "maintainer": "Arara <contato@arara.code.app.br>",
@@ -63,9 +66,11 @@
         "AppImage",
         "deb"
       ],
-      "category": "Development"
+      "category": "Development",
+      "icon": "build/icon.png"
     },
-    "artifactName": "AraraVibes-${os}-${arch}-${version}.${ext}"
+    "artifactName": "AraraVibes-${os}-${arch}-${version}.${ext}",
+    "icon": "build/icon.png"
   },
   "devDependencies": {
     "@types/node": "24.19.1",
