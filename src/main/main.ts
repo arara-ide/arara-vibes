@@ -8,7 +8,7 @@ import { setLocale, t } from '../i18n';
 import { BackgroundHost, backgroundRuntime } from '../host/background';
 import { CHECK_INTERVAL_MS, checkForUpdate } from './update';
 import { defaultShortcut, loadPreferences, normalizePreferences, resolveLanguage, savePreferences, setLinuxAutostart, type Preferences } from './preferences';
-import { TRAY_ASSETS } from './tray';
+import { APP_ICON, TRAY_ASSETS } from './tray';
 
 const smoke = process.argv.includes('--smoke-test');
 const integration = process.argv.includes('--integration-test');
@@ -157,7 +157,7 @@ else {
     const area = screen.getPrimaryDisplay().workArea;
     const width = Math.min(MIN_WIDTH, area.width);
     expandedHeight = Math.min(480, area.height - 40);
-    window = new BrowserWindow({ width, height: expandedHeight, minWidth: MIN_WIDTH, minHeight: 360, maxWidth: 520, maximizable: false, fullscreenable: false,
+    window = new BrowserWindow({ icon: resolve(__dirname, APP_ICON), width, height: expandedHeight, minWidth: MIN_WIDTH, minHeight: 360, maxWidth: 520, maximizable: false, fullscreenable: false,
       x: area.x + Math.round((area.width - width) / 2), y: area.y + 20,
       frame: false, alwaysOnTop: true, transparent: process.platform === 'darwin', visualEffectState: 'active', backgroundColor: '#1b1d21', show: false,
       webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
