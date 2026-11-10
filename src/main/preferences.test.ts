@@ -44,3 +44,21 @@ it('keeps a background close and a valid shortcut by default', async () => {
   for (const value of ['Space', 'Alt+Alt+K', 'Hyper+K', 'Alt+', 'Alt+Ç', 'x'.repeat(61), 7]) expect(validShortcut(value)).toBe(false);
   expect(normalizePreferences({ shortcut: 'Shift' }).shortcut).toBe(defaultPreferences.shortcut);
 });
+
+it('registers a hidden macOS login launch with escaped arguments and removes only its own entry', async () => {
+  const { loginCommand, macAutostartEntry, macAutostartFile, setMacAutostart } = await import('./preferences');
+  const root = mkdtempSync(join(tmpdir(), 'vibes-login-'));
+  const file = macAutostartFile(root);
+  const command = loginCommand('/Applications/Arara & Vibes.app/Contents/MacOS/Arara Vibes');
+  expect(command).toEqual(['/Applications/Arara & Vibes.app/Contents/MacOS/Arara Vibes', '--hidden']);
+  expect(loginCommand('/electron', '/project')).toEqual(['/electron', '/project', '--hidden']);
+  setMacAutostart(true, command, file);
+  const entry = readFileSync(file, 'utf8');
+  expect(entry).toBe(macAutostartEntry(command));
+  expect(entry).toContain('Arara &amp; Vibes.app');
+  expect(entry).toContain('<key>RunAtLoad</key><true/>');
+  expect(entry).toContain('<string>--hidden</string>');
+  expect(entry).not.toContain('KeepAlive');
+  setMacAutostart(false, [], file);
+  expect(existsSync(file)).toBe(false);
+});

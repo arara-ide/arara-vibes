@@ -143,3 +143,13 @@ html:has(#loading:not([data-off="true"])) #brand-logo { opacity: 0; transition: 
 .browser-tab.tab-drag-source { opacity: var(--tab-drag-opacity); }
 .tab-drag-preview { position: fixed; top: -100vh; left: 0; opacity: 1; pointer-events: none; animation: none; background: var(--vscode-editor-background); }
 .tab-drop-marker { position: fixed; width: var(--tab-drop-width); background: var(--vscode-focusBorder); pointer-events: none; z-index: 30; border-radius: var(--radius-xs); }
+#update { overflow-y: auto; justify-content: safe center; }
+#update-products { display: flex; flex-direction: column; gap: var(--space-3); width: 100%; }
+.update-product { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--vscode-widget-border); border-radius: var(--radius); text-align: left; }
+.update-product > div { min-width: 0; }
+.update-product h2 { margin: 0 0 var(--space-1); font: inherit; font-weight: 600; }
+.update-product p { margin: var(--space-1) 0 0; color: var(--vscode-descriptionForeground); font-size: var(--font-small); overflow-wrap: anywhere; }
+.update-product button { flex-shrink: 0; }
+.update-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--space-2); }
+
+html[data-mac="true"] :is(#loading, #signin, #onboarding, #recover, #update) { background: transparent; }

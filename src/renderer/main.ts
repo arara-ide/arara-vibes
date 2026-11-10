@@ -1,3 +1,5 @@
+import type { UpdatesState } from '../main/updates';
+import { renderUpdates } from './updates';
 import { t, setLocale } from '../i18n';
 import { chatDocument } from './document';
 import type { HostInfo } from '../host/connection';
@@ -95,9 +97,10 @@ function feedback(text = '', error = false) {
 const bootAt = Date.now();
 let bootTimer: ReturnType<typeof setTimeout> | undefined;
 function busy(loading: boolean) {
+  if (!element('update').hidden) loading = false;
   clearTimeout(loadingTimeout); clearTimeout(bootTimer);
   const wait = bootAt + 2000 - Date.now();
-  if (!loading && wait > 0) { bootTimer = setTimeout(() => busy(false), wait); return; }
+  if (!loading && element('update').hidden && wait > 0) { bootTimer = setTimeout(() => busy(false), wait); return; }
   element('loading').dataset.off = String(!loading);
   if (loading) loadingTimeout = setTimeout(() => { element('loading').dataset.off = 'true'; feedback(t('The conversation did not load. Try again.'), true); }, 20000);
 }
@@ -113,7 +116,6 @@ async function connect(id: string) {
   reset(); element('recover').hidden = true; activeHost = hosts.find(host => host.id === id);
   if (!activeHost?.allowed) return;
   feedback(); busy(true); localize(activeHost.locale);
-  if (activeHost.logo?.startsWith('data:image/svg+xml;base64,')) document.querySelectorAll<HTMLImageElement>('img:not(#loading-logo):not(#brand-logo)').forEach(img => { img.src = activeHost!.logo; });
   for (const [key, value] of Object.entries(activeHost.theme)) if (/^--vscode-[\w-]+$/.test(key) && /^#[a-fA-F0-9]{3,8}$/.test(value)) document.documentElement.style.setProperty(key, value);
   await action('connect', { id }); connected = true;
   if (activeHost.signedIn === false) { busy(false); element('signin').hidden = false; }
@@ -141,10 +143,17 @@ async function onboarding() {
   element('onboarding-bar-label').textContent = t(bar);
   element<HTMLInputElement>('onboarding-login').checked = true; element<HTMLInputElement>('onboarding-bar').checked = preferences.showInBar;
   element('loading').dataset.off = 'true'; screen.hidden = false; element<HTMLButtonElement>('onboarding-continue').focus();
-  await new Promise<void>(done => { element('onboarding-continue').onclick = () => done(); });
-  const button = element<HTMLButtonElement>('onboarding-continue'); button.disabled = true;
-  try { await action('preferences', { preferences: { launchAtLogin: element<HTMLInputElement>('onboarding-login').checked, showInBar: element<HTMLInputElement>('onboarding-bar').checked, onboarded: true } }); }
-  finally { button.disabled = false; screen.hidden = true; element('loading').dataset.off = 'false'; }
+  const button = element<HTMLButtonElement>('onboarding-continue');
+  await new Promise<void>(done => {
+    button.onclick = async () => {
+      button.disabled = true;
+      try {
+        applyPreferences(await action('preferences', { preferences: { launchAtLogin: element<HTMLInputElement>('onboarding-login').checked, showInBar: element<HTMLInputElement>('onboarding-bar').checked, onboarded: true } }) as VibesPreferences);
+        feedback(); screen.hidden = true; element('loading').dataset.off = 'false'; done();
+      } catch { feedback(t('Could not complete the action. Try again.'), true); }
+      finally { button.disabled = false; }
+    };
+  });
 }
 async function discover() {
   if (!onboarded) return;
@@ -287,9 +296,13 @@ function renderOptions(platforms: { id: string; label: string; icon?: string }[]
   }));
 }
 function receive(event: Record<string, unknown>) {
-  if (event.type === 'shell' && typeof event.update === 'string') receive({ type: 'update', latest: event.update });
-  if (event.type === 'update' && typeof event.latest === 'string') { element('update-text').textContent = t('Version {0} is available. Update to keep using Arara Vibes.', event.latest); document.documentElement.dataset.update = 'true'; element('update').hidden = false; return; }
-  if (event.type === 'updateFailed') { element('update-text').textContent = t('Could not complete the action. Try again.'); return; }
+  if (event.type === 'openUpdates') { openUpdates(); return; }
+  if ((event.type === 'shell' || event.type === 'updates') && event.updates) {
+    updatesState = event.updates as UpdatesState;
+    if (!updatesDismissed && updatesState.products.some(item => item.status === 'available')) openUpdates();
+    drawUpdates();
+    if (event.type === 'updates') return;
+  }
   if (event.type === 'preferences') { applyPreferences(event.preferences as VibesPreferences); return; }
   if (event.type === 'shell') {
     glass = event.glass === true; document.documentElement.dataset.glass = String(glass);
@@ -370,14 +383,47 @@ function bind(id: string, run: () => Promise<unknown>) {
 bind('expand', () => action('expand')); bind('hide', () => action('hide'));
 bind('retry', async () => { element('recover').hidden = true; hostRequested = false; connected = false; activeHost = undefined; busy(true); await discover(); });
 bind('sign-in-copy', async () => { await action('copySignInLink'); feedback(t('Sign-in link copied. Paste it in your browser.')); });
-bind('update-install', async () => { element('update-text').textContent = t('Downloading the update…'); await action('installUpdate'); });
+let updatesState: UpdatesState = { products: [], busy: false };
+let updatesDismissed = false;
+function drawUpdates() {
+  renderUpdates(element('update-products'), updatesState, async product => { await action('installUpdate', { product }); });
+  element('update-text').textContent = t('Keep Arara Vibes and Arara Code up to date. Arara Code restarts before Arara Vibes. Finish ongoing tasks before updating.');
+  element<HTMLButtonElement>('update-install').disabled = updatesState.busy || !updatesState.products.some(item => item.status === 'available');
+  element<HTMLButtonElement>('update-check').disabled = updatesState.busy;
+  element<HTMLButtonElement>('update-close').disabled = updatesState.busy;
+}
+function openUpdates() {
+  document.documentElement.dataset.update = 'true';
+  element('loading').dataset.off = 'true';
+  element('update').hidden = false;
+  busy(false);
+  if (document.body.dataset.expanded === 'false') void action('expand').catch(fail);
+  drawUpdates();
+}
+bind('updates-open', async () => { openUpdates(); await action('checkUpdates'); });
+bind('update-install', async () => { await action('installUpdate'); });
+bind('update-check', async () => { await action('checkUpdates'); });
+function closeUpdates() {
+  if (updatesState.busy) return;
+  updatesDismissed = true; delete document.documentElement.dataset.update; element('update').hidden = true; element('updates-open').focus();
+}
+bind('update-close', async () => closeUpdates());
 bind('sign-in', async () => { await action('signIn'); await discover(); });
 bind('history', () => send({ type: 'history', surface: selected, all: true }));
 bind('history-new', async () => { element('history-panel').hidden = true; await send({ type: 'newConversation', surface: selected }); });
 const closeHistory = () => { if (element('history-panel').hidden) return; element('history-panel').hidden = true; views.get(selected)?.frame.focus(); };
 addEventListener('pointerdown', event => { const target = event.target as Node; if (!element('history-panel').contains(target) && !element('history').contains(target)) closeHistory(); });
 addEventListener('blur', () => { if (document.activeElement?.tagName === 'IFRAME') { closeHistory(); element<HTMLDetailsElement>('tab-picker').open = false; } });
-addEventListener('keydown', event => { if (event.key === 'Escape') closeHistory(); });
+addEventListener('keydown', event => {
+  if (element('update').hidden) { if (event.key === 'Escape') closeHistory(); return; }
+  if (event.key === 'Escape') { event.preventDefault(); closeUpdates(); }
+  if (event.key !== 'Tab') return;
+  const buttons = Array.from(element('update').querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));
+  const first = buttons[0], last = buttons.at(-1);
+  if (!first) { event.preventDefault(); return; }
+  if (!element('update').contains(document.activeElement) || (event.shiftKey && document.activeElement === first)) { event.preventDefault(); (event.shiftKey ? last : first)?.focus(); }
+  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+});
 const stream = new EventSource('events');
 stream.onmessage = event => { try { receive(JSON.parse(event.data)); } catch (error) { fail(error); } };
 stream.onerror = () => { recover(); };

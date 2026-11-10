@@ -10,6 +10,11 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run && node --test scripts/start.test.mjs scripts/sign-macos.test.mjs",
     "test:smoke": "env -u ELECTRON_RUN_AS_NODE electron . --smoke-test",
+    "test:shell": "node scripts/test-shell.mjs",
+    "test:surfaces": "node scripts/test-mac-surfaces.mjs",
+    "test:updates": "node scripts/test-shell.mjs --updates",
+    "test:autostart:mac": "node scripts/test-macos-autostart.mjs",
+    "test:lifecycle": "node scripts/test-lifecycle.mjs",
     "test:tabs": "node scripts/test-tab-drag.mjs",
     "build": "tsc --noEmit && node scripts/build.mjs",
     "lint": "tsc --noEmit",
@@ -19,7 +24,8 @@
     "package:mac": "electron-builder --mac --publish never",
     "package:win": "electron-builder --win --publish never",
     "package:linux": "electron-builder --linux --publish never",
-    "preview": "node dist/preview.mjs"
+    "preview": "node dist/preview.mjs",
+    "build:icons": "node scripts/build-icons.cjs"
   },
   "build": {
     "appId": "br.app.code.arara.vibes",
@@ -37,9 +43,11 @@
       "dist/tokens.css",
       "dist/logo.svg",
       "dist/logo-white.svg",
+      "dist/logo-animated.svg",
       "dist/tray-white.png",
       "dist/tray-white@2x.png",
       "dist/icon.png",
+      "dist/icon-mac.png",
       "package.json",
       "dist/icons.svg",
       "dist/codicons-LICENSE"
@@ -51,7 +59,7 @@
       ],
       "category": "public.app-category.developer-tools",
       "sign": "scripts/sign-macos.cjs",
-      "icon": "build/icon.icns"
+      "icon": "build/icon-mac.icns"
     },
     "win": {
       "target": [

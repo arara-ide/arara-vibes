@@ -9,6 +9,9 @@ export function newerVersion(candidate: string, current: string) {
   return false;
 }
 
+export const validVersion = (value: unknown): value is string => typeof value === 'string' && pattern.test(value);
+export const isCurrentVersion = (latest: string, current: unknown) => validVersion(current) && !newerVersion(latest, current);
+
 interface Release { tag_name?: unknown; draft?: unknown; prerelease?: unknown; assets?: unknown }
 export function latestRelease(releases: unknown, current: string): string | undefined {
   if (!Array.isArray(releases)) return;
@@ -28,4 +31,27 @@ export async function checkForUpdate(current: string, get: typeof fetch = fetch)
     if (!response.ok) return;
     return latestRelease(await response.json(), current);
   } catch { return; }
+}
+
+interface UpdateInstaller {
+  platform: string;
+  appRoot: string;
+  appImage?: string;
+  installAppImage?(file: string, destination: string, pid: number): Promise<void>;
+  pid: number;
+  installMacDmg(file: string, product: string, options: { appRoot: string; waitPid: number }): Promise<string>;
+  openPath(file: string): Promise<string>;
+  quit(): void;
+}
+
+export async function installPreparedUpdate(file: string, installer: UpdateInstaller) {
+  if (installer.platform === 'darwin') await installer.installMacDmg(file, 'arara-vibes', { appRoot: installer.appRoot, waitPid: installer.pid });
+  else if (installer.platform === 'linux' && file.endsWith('.AppImage')) {
+    if (!installer.appImage || !installer.installAppImage) throw new Error('AppImage installation path unavailable');
+    await installer.installAppImage(file, installer.appImage, installer.pid);
+  } else {
+    const error = await installer.openPath(file);
+    if (error) throw new Error(error);
+  }
+  installer.quit();
 }

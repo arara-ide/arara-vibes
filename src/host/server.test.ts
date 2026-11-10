@@ -50,5 +50,30 @@ it('routes preferences, update and sign-in link actions through the shell', asyn
   expect((await post({ action: 'shortcutRecording', recording: true })).status).toBe(200);
   expect((await post({ action: 'shortcutRecording', recording: 'yes' })).status).toBe(200);
   expect(calls).toEqual([['preferences', { animations: false }], ['install'], ['recording', true], ['recording', false]]);
-  expect((await fetch(new URL('logo-animated.svg?123', shell.url))).status).not.toBe(404);
+  const logo = await fetch(new URL('logo-animated.svg?123', shell.url));
+  expect(logo.status).toBe(200);
+  expect(logo.headers.get('Content-Type')).toBe('image/svg+xml');
+  expect(await logo.text()).toBe('<svg/>');
+});
+
+it('routes update checks and product selection while rejecting unknown products', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'vibes-updates-shell-'));
+  cleanups.push(() => rm(directory, { recursive: true }));
+  const calls: unknown[] = [];
+  const shell = await startShell(directory, {
+    locale: 'en', state: () => ({ pinned: true, expanded: true, updates: { busy: false, products: [{ product: 'arara-code', current: '1.135.07400', latest: '1.135.07430', status: 'available' }] } }),
+    run: async () => {}, checkUpdates: async () => { calls.push('check'); }, installUpdate: async product => { calls.push(product ?? 'all'); },
+  });
+  cleanups.push(() => shell.close());
+  const post = (input: unknown) => fetch(new URL('action', shell.url), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+  expect((await post({ action: 'checkUpdates' })).status).toBe(200);
+  expect((await post({ action: 'installUpdate', product: 'arara-code' })).status).toBe(200);
+  expect((await post({ action: 'installUpdate', product: 'arara-vibes' })).status).toBe(200);
+  expect((await post({ action: 'installUpdate' })).status).toBe(200);
+  expect((await post({ action: 'installUpdate', product: '../../other' })).status).toBe(400);
+  expect((await post({ action: 'installUpdate', product: {} })).status).toBe(400);
+  expect(calls).toEqual(['check', 'arara-code', 'arara-vibes', 'all']);
+  const events = await fetch(new URL('events', shell.url)); const reader = events.body!.getReader();
+  expect(new TextDecoder().decode((await reader.read()).value)).toContain('"current":"1.135.07400"');
+  await reader.cancel();
 });
