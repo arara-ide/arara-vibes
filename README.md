@@ -53,3 +53,21 @@ Abra a URL local informada pelo preview no navegador da IDE. Esse modo oferece a
 A primeira abertura prepara em segundo plano o instalador estável do aplicativo complementar ausente. Os downloads vêm das releases públicas oficiais, com SHA-256 obrigatório e cache verificado; a instalação passa pelo instalador do sistema. A distribuição pública das alterações depende das releases dos dois produtos. O build nunca copia o `arara-ai` nem mídia privada para este pacote.
 
 Ícones da moldura: Codicons, Microsoft, MIT, extraídos dos recursos públicos do Code-OSS. Licença em `assets/codicons-LICENSE`. Logo: branding público do Arara Code.
+
+
+## Atualizações
+
+O botão de atualização no cabeçalho e Verificar atualizações no menu da bandeja abrem o módulo do próprio Vibes. Ele mostra separadamente as versões instalada e disponível do Arara Code e do Arara Vibes. A verificação automática ocorre a cada cinco minutos nas distribuições empacotadas; versões de desenvolvimento são preservadas.
+
+Atualizar tudo prepara os downloads conferidos, atualiza primeiro o Code e confirma a versão em disco antes de atualizar/reiniciar o Vibes. Atualizar somente o Vibes também verifica a dependência do Code. Depois fecha a tela sem instalar. Erros de rede, recusa ou falha de instalação continuam visíveis e permitem tentar novamente.
+
+No macOS, o Code é substituído pelo instalador compartilhado, sem abrir uma janela normal do editor; o host próprio do Vibes é reiniciado. Outra instância do Code aberta ou falta de permissão impedem a troca, conservando o Vibes. Nos formatos que usam instalador externo, finalize os passos do sistema; o Code só é marcado como atualizado depois que sua versão muda. A migração do antigo UserSetup do Windows continua explícita, preservando os dados. O AppImage do próprio Vibes é preparado no caminho original e reaberto por serviço temporário do usuário; sem systemd de usuário, a preparação falha antes de fechar o Vibes.
+
+Verificação local da interface e da coordenação, sem instalar apps reais:
+
+```bash
+npm run typecheck
+npm test
+npm run build
+npm run test:updates
+```

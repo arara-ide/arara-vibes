@@ -5,9 +5,12 @@ import { tmpdir } from 'node:os';
 import { startShell } from '../host/server';
 import { companion } from '../host/companion';
 import { setLocale, t } from '../i18n';
+import { Updates, UpdateFailure, type UpdateProduct } from './updates';
+import { updateCode } from './codeUpdate';
+import { codeInstallation } from '../host/installation';
 import { BackgroundHost, backgroundRuntime } from '../host/background';
-import { CHECK_INTERVAL_MS, checkForUpdate } from './update';
-import { defaultShortcut, loadPreferences, normalizePreferences, resolveLanguage, savePreferences, setLinuxAutostart, type Preferences } from './preferences';
+import { CHECK_INTERVAL_MS, installPreparedUpdate } from './update';
+import { defaultShortcut, loadPreferences, normalizePreferences, resolveLanguage, savePreferences, loginCommand, setMacAutostart, setLinuxAutostart, type Preferences } from './preferences';
 import { APP_ICON, TRAY_ASSETS } from './tray';
 
 const smoke = process.argv.includes('--smoke-test');
@@ -20,21 +23,16 @@ const pinned = true;
 let expanded = true;
 let expandedHeight = 640;
 let glass = false;
-let installer: string | undefined;
-let preparing: Promise<string> | undefined;
 const abort = new AbortController();
 const runtime = companion(__dirname);
 let background: BackgroundHost | undefined;
 let quitting = false;
+let hostStopped = false;
+let stopping: Promise<void> | undefined;
 const live = () => window && !window.isDestroyed() ? window : undefined;
 const show = () => { const current = live(); if (!current) return; const wasHidden = !current.isVisible(); if (wasHidden && preferences?.splash) { void current.webContents.executeJavaScript('window.vibesSplash?.()').catch(() => undefined).finally(() => { if (!current.isDestroyed()) { current.show(); current.focus(); } }); return; } current.show(); current.focus(); };
 const toggle = () => { const current = live(); if (current?.isVisible() && current.isFocused()) current.hide(); else show(); };
 
-async function prepare() {
-  if (installer) return installer;
-  preparing ??= runtime.prepareCompanion('arara-code', { signal: abort.signal }).then(file => { installer = file; return file; }).finally(() => { preparing = undefined; });
-  return preparing;
-}
 const MIN_WIDTH = 360;
 function animateBounds(target: BrowserWindow, to: Electron.Rectangle): Promise<void> {
   const from = target.getBounds();
@@ -53,18 +51,20 @@ function animateBounds(target: BrowserWindow, to: Electron.Rectangle): Promise<v
 }
 const preferencesFile = () => join(app.getPath('userData'), 'preferences.json');
 let preferences: Preferences;
-function loginCommand() {
-  const executable = process.env.APPIMAGE ?? process.execPath;
-  return [executable, ...(app.isPackaged ? [] : [app.getAppPath()]), '--hidden'];
-}
 function applyLaunchAtLogin(enabled: boolean) {
-  if (process.platform === 'linux') { setLinuxAutostart(enabled, loginCommand()); return; }
-  if (!app.isPackaged) return;
-  const [path, ...args] = loginCommand();
-  app.setLoginItemSettings(process.platform === 'win32' ? { openAtLogin: enabled, path, args } : { openAtLogin: enabled });
+  const command = loginCommand(process.env.APPIMAGE ?? process.execPath, app.isPackaged ? undefined : app.getAppPath());
+  if (process.platform === 'linux') { setLinuxAutostart(enabled, command); return; }
+  if (process.platform === 'darwin') {
+    setMacAutostart(enabled, command);
+    if (app.isPackaged && app.getLoginItemSettings().openAtLogin) app.setLoginItemSettings({ openAtLogin: false });
+    return;
+  }
+  const [path, ...args] = command;
+  app.setLoginItemSettings({ openAtLogin: enabled, path, args });
 }
+
 function trayMenu() {
-  return Menu.buildFromTemplate([{ label: t('Show Arara Vibes'), click: show }, { label: t('Hide Arara Vibes'), click: () => window?.hide() }, { type: 'separator' }, { label: t('Quit'), click: () => app.quit() }]);
+  return Menu.buildFromTemplate([{ label: t('Show Arara Vibes'), click: show }, { label: t('Check for updates'), click: () => { show(); server?.emit({ type: 'openUpdates' }); void updates.check(); } }, { label: t('Hide Arara Vibes'), click: () => window?.hide() }, { type: 'separator' }, { label: t('Quit'), click: () => app.quit() }]);
 }
 function applyShowInBar(enabled: boolean) {
   if (process.platform === 'win32') { live()?.setSkipTaskbar(!enabled); if (!tray) createTray(); return; }
@@ -89,28 +89,64 @@ function shortcutRecording(recording: boolean) {
   if (recording) globalShortcut.unregister(preferences.shortcut);
   else if (!globalShortcut.isRegistered(preferences.shortcut)) registerShortcut(preferences.shortcut);
 }
-let pendingUpdate: string | undefined;
-async function watchUpdates() {
-  if (!app.isPackaged || process.env.ARARA_VIBES_DISABLE_UPDATES === '1') return;
-  const check = async () => { const latest = await checkForUpdate(app.getVersion()); if (latest && latest !== pendingUpdate) { pendingUpdate = latest; server?.emit({ type: 'update', latest }); } };
-  void check(); setInterval(() => void check(), CHECK_INTERVAL_MS).unref();
-}
-async function installUpdate() {
-  if (!pendingUpdate) return false;
+let updates: Updates;
+let codeUpdating = false;
+const installedCode = () => runtime.installedCompanion('arara-code');
+const installation = () => codeInstallation(installedCode());
+const updateOptions = (product: UpdateProduct) => ({ signal: abort.signal, arch: app.runningUnderARM64Translation ? 'arm64' : process.arch, format: product === 'arara-code' ? installation()?.format : process.platform === 'linux' && !process.env.APPIMAGE ? 'deb' : undefined });
+async function installCodeUpdate(file: string, version: string) {
+  const previous = installation();
+  if (process.platform === 'win32' && previous?.product.target === 'user') throw new UpdateFailure('migration');
+  codeUpdating = true;
   try {
-    const file = await runtime.prepareCompanion('arara-vibes', { signal: abort.signal, root: join(app.getPath('userData'), 'updates', pendingUpdate.replace(/[^\w.-]/g, '')) });
-    await shell.openPath(file); app.quit(); return true;
-  } catch { server?.emit({ type: 'updateFailed' }); return false; }
+    await updateCode(version, {
+      pause: async () => {
+        const restart = !!background;
+        if (background) { await server?.shutdown(); await background.stop(); background = undefined; }
+        return restart;
+      },
+      install: async () => {
+        if (process.platform === 'darwin') await runtime.installMacDmg(file, 'arara-code', { appRoot: previous?.appRoot, open: false });
+        else { const error = await shell.openPath(file); if (error) throw new Error(error); }
+      },
+      currentVersion: () => installation()?.product.version,
+      resume: async () => { codeUpdating = false; await run('startHost'); },
+      signal: abort.signal, now: Date.now, wait: () => new Promise(resolve => setTimeout(resolve, 1000)),
+    });
+  } finally { codeUpdating = false; }
+}
+function createUpdates() {
+  return new Updates({
+    current: async product => {
+      if (product === 'arara-vibes') return { version: app.getVersion(), development: !app.isPackaged };
+      const options = backgroundRuntime(__dirname, installedCode());
+      const current = installation();
+      if (options?.development) return { development: true };
+      if (installedCode() && !current) throw new Error('Installed application metadata unavailable');
+      return { version: current?.product.version };
+    },
+    latest: product => runtime.latestCompanion(product, updateOptions(product)),
+    download: (product, version) => runtime.prepareCompanion(product, { ...updateOptions(product), version, root: join(app.getPath('userData'), 'updates', product, version) }),
+    install: async (product, file, version) => {
+      if (product === 'arara-code') return installCodeUpdate(file, version);
+      await installPreparedUpdate(file, { platform: process.platform, appRoot: process.execPath, pid: process.pid, appImage: process.env.APPIMAGE, installAppImage: (...args) => runtime.installAppImage(...args), installMacDmg: (...args) => runtime.installMacDmg(...args), openPath: file => shell.openPath(file), quit: () => app.quit() });
+    },
+    changed: state => server?.emit({ type: 'updates', updates: state }),
+  });
+}
+function watchUpdates() {
+  if (!app.isPackaged || process.env.ARARA_VIBES_DISABLE_UPDATES === '1') return;
+  void updates.check(); setInterval(() => void updates.check(), CHECK_INTERVAL_MS).unref();
 }
 async function updatePreferences(update?: unknown) {
   if (update === undefined) return { ...preferences, defaultShortcut: defaultShortcut() };
   const previous = preferences;
   preferences = normalizePreferences(update, preferences);
   savePreferences(preferencesFile(), preferences);
-  if (previous.launchAtLogin !== preferences.launchAtLogin) try { applyLaunchAtLogin(preferences.launchAtLogin); } catch { preferences.launchAtLogin = previous.launchAtLogin; savePreferences(preferencesFile(), preferences); }
+  if (previous.launchAtLogin !== preferences.launchAtLogin) try { applyLaunchAtLogin(preferences.launchAtLogin); } catch (error) { preferences = previous; savePreferences(preferencesFile(), preferences); throw error; }
   if (previous.shortcut !== preferences.shortcut && !registerShortcut(preferences.shortcut, globalShortcut.isRegistered(previous.shortcut) ? previous.shortcut : undefined)) { preferences.shortcut = previous.shortcut; savePreferences(preferencesFile(), preferences); registerShortcut(preferences.shortcut); }
   if (previous.showInBar !== preferences.showInBar) applyShowInBar(preferences.showInBar);
-  if (previous.language !== preferences.language) { setLocale(resolveLanguage(preferences.language, app.getLocale())); await server?.shutdown(); background = undefined; }
+  if (previous.language !== preferences.language) { setLocale(resolveLanguage(preferences.language, app.getLocale())); await server?.shutdown(); await background?.stop(); background = undefined; }
   return { ...preferences, defaultShortcut: defaultShortcut() };
 }
 async function run(action: string) {
@@ -131,13 +167,15 @@ async function run(action: string) {
   }
   if (action === 'hide') { if (preferences.closeAction === 'quit') app.quit(); else window?.hide(); }
   if (action === 'startHost' && !smoke) {
+    if (codeUpdating) return;
+    if (background) { await server?.shutdown(); await background.stop(); }
     if (!background) {
       const options = backgroundRuntime(__dirname, runtime.installedCompanion('arara-code'), app.commandLine.hasSwitch('no-sandbox'), resolveLanguage(preferences.language, app.getLocale()));
       if (!options && process.env.ARARA_DISABLE_COMPANION_DOWNLOAD !== '1') {
-        const file = await prepare();
-        if (!abort.signal.aborted) await shell.openPath(file);
+        server?.emit({ type: 'openUpdates' });
+        void updates.check();
       }
-      if (!options) throw new Error(t('Arara Code is being prepared. Complete installation when the installer opens.'));
+      if (!options) throw new Error(t('Open Updates to install or update Arara Code and start the chat.'));
       background = new BackgroundHost(options);
     }
     await background.start();
@@ -146,13 +184,15 @@ async function run(action: string) {
 
 if (!smoke && !integration && !app.requestSingleInstanceLock()) app.quit();
 else {
-  app.on('second-instance', show);
+  app.on('second-instance', (_event, argv) => { if (!argv.includes('--hidden')) show(); });
   app.setName('Arara Vibes');
   void app.whenReady().then(async () => {
     preferences = loadPreferences(preferencesFile());
+    if (!smoke && !integration && preferences.launchAtLogin) try { applyLaunchAtLogin(true); } catch { preferences.launchAtLogin = false; savePreferences(preferencesFile(), preferences); }
     const locale = resolveLanguage(preferences.language, app.getLocale());
     setLocale(locale);
-    server = await startShell(__dirname, { run, state: () => ({ pinned, expanded, glass, update: pendingUpdate }), locale, preferences: updatePreferences, installUpdate, shortcutRecording });
+    updates = createUpdates();
+    server = await startShell(__dirname, { run, state: () => ({ pinned, expanded, glass, updates: updates.state() }), locale, preferences: updatePreferences, checkUpdates: () => updates.check(), installUpdate: product => updates.update(product), shortcutRecording });
     void watchUpdates();
     const area = screen.getPrimaryDisplay().workArea;
     const width = Math.min(MIN_WIDTH, area.width);
@@ -164,11 +204,10 @@ else {
     });
     const focused = (value: boolean) => { const current = live(); if (current) void current.webContents.executeJavaScript(`document.documentElement.dataset.focused = '${value}'`).catch(() => undefined); };
     window.on('focus', () => focused(true)); window.on('blur', () => focused(false));
-    window.on('close', event => { if (!quitting) { event.preventDefault(); window?.hide(); } });
     window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     window.webContents.on('will-navigate', (event, url) => { if (url !== server?.url) event.preventDefault(); });
-    window.on('close', event => { if (abort.signal.aborted) return; event.preventDefault(); if (preferences.closeAction === 'quit') app.quit(); else window?.hide(); });
+    window.on('close', event => { if (quitting) return; event.preventDefault(); if (preferences.closeAction === 'quit') app.quit(); else window?.hide(); });
     if (process.platform === 'darwin') {
       nativeTheme.themeSource = 'dark';
       window.setBackgroundColor('#00000000'); glass = true;
@@ -285,6 +324,9 @@ else {
       app.quit(); return;
     }
     if (smoke) {
+      const branding = await window.webContents.executeJavaScript(`(async()=>{const images=[...document.images];await Promise.all(images.map(image=>image.decode()));const response=await fetch('logo-animated.svg');const animated=await response.text();return{loaded:images.every(image=>image.naturalWidth>0),gold:animated.includes('#f5cc64'),animated:response.ok&&animated.includes('@keyframes arara-contour'),brand:document.getElementById('brand-logo').getAttribute('src')}})()`);
+      if (!branding.loaded || !branding.gold || !branding.animated || branding.brand !== 'logo.svg') throw new Error('Packaged gold branding or animated splash is missing');
+      process.stdout.write('PASS: gold application branding and animated splash loaded from packaged assets\n');
       if (process.argv.includes('--production')) {
         if (!app.commandLine.hasSwitch('no-sandbox')) throw new Error('Required startup flag missing');
         if (process.env.ARARA_AI_EXTENSION_PATH) {
@@ -326,17 +368,23 @@ else {
     ]) : null);
     applyShowInBar(preferences.showInBar);
     registerShortcut(preferences.shortcut);
-    if (process.env.ARARA_DISABLE_COMPANION_DOWNLOAD !== '1' && !runtime.installedCompanion('arara-code')) {
-      void prepare().then(async file => { if (!abort.signal.aborted) await shell.openPath(file); }).catch(() => server?.emit({ type: 'companionFailed' }));
-    }
+
   }).catch(error => { process.stderr.write(`Arara Vibes: ${error instanceof Error ? error.message : 'Startup failed'}\n`); app.exit(1); });
 }
 app.on('activate', show);
 app.on('before-quit', event => {
   quitting = true;
-  if (background && !abort.signal.aborted) {
+  if (background && !hostStopped) {
     event.preventDefault(); abort.abort();
-    void server?.shutdown().finally(() => app.quit()); return;
+    stopping ??= (async () => {
+      try { await server?.shutdown(); }
+      finally {
+        try { await background?.stop(); }
+        finally { hostStopped = true; server?.close(); app.quit(); }
+      }
+    })();
+    void stopping.catch(error => process.stderr.write(`Arara Vibes: ${error instanceof Error ? error.message : 'Shutdown failed'}\n`));
+    return;
   }
   abort.abort(); server?.close(); globalShortcut.unregisterAll(); tray?.destroy();
 });

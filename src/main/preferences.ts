@@ -48,3 +48,20 @@ export function setLinuxAutostart(enabled: boolean, command: string[], file = au
   writeFileSync(file, autostartEntry(command));
 }
 export const linuxAutostartEnabled = (file = autostartFile()) => existsSync(file);
+
+export function loginCommand(executable: string, appPath?: string): string[] {
+  return [executable, ...(appPath ? [appPath] : []), '--hidden'];
+}
+const xml = (value: string) => value.replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[character]!);
+export const macAutostartFile = (home = homedir()) => join(home, 'Library/LaunchAgents/br.app.code.arara.vibes.plist');
+export function macAutostartEntry(command: string[]) {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict><key>Label</key><string>br.app.code.arara.vibes</string><key>ProgramArguments</key><array>${command.map(argument => `<string>${xml(argument)}</string>`).join('')}</array><key>RunAtLoad</key><true/><key>LimitLoadToSessionType</key><string>Aqua</string></dict></plist>
+`;
+}
+export function setMacAutostart(enabled: boolean, command: string[], file = macAutostartFile()) {
+  if (!enabled) { rmSync(file, { force: true }); return; }
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, macAutostartEntry(command), { mode: 0o600 });
+}
