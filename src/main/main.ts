@@ -1,3 +1,4 @@
+import { registerShellBridge } from './bridge';
 import { app, BrowserWindow, globalShortcut, Menu, nativeTheme, Tray, nativeImage, screen, shell, systemPreferences } from 'electron';
 import { join, resolve } from 'node:path';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
@@ -200,8 +201,9 @@ else {
     window = new BrowserWindow({ icon: resolve(__dirname, APP_ICON), width, height: expandedHeight, minWidth: MIN_WIDTH, minHeight: 360, maxWidth: 520, maximizable: false, fullscreenable: false,
       x: area.x + Math.round((area.width - width) / 2), y: area.y + 20,
       frame: false, alwaysOnTop: true, transparent: process.platform === 'darwin', visualEffectState: 'active', backgroundColor: '#1b1d21', show: false,
-      webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+      webPreferences: { preload: resolve(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true },
     });
+    registerShellBridge(window.webContents, server.url, server.dispatch);
     const focused = (value: boolean) => { const current = live(); if (current) void current.webContents.executeJavaScript(`document.documentElement.dataset.focused = '${value}'`).catch(() => undefined); };
     window.on('focus', () => focused(true)); window.on('blur', () => focused(false));
     window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
@@ -324,6 +326,7 @@ else {
       app.quit(); return;
     }
     if (smoke) {
+      if (!await window.webContents.executeJavaScript("typeof window.araraVibes?.action === 'function'")) throw new Error('Native action bridge did not load');
       const branding = await window.webContents.executeJavaScript(`(async()=>{const images=[...document.images];await Promise.all(images.map(image=>image.decode()));const response=await fetch('logo-animated.svg');const animated=await response.text();return{loaded:images.every(image=>image.naturalWidth>0),gold:animated.includes('#f5cc64'),animated:response.ok&&animated.includes('@keyframes arara-contour'),brand:document.getElementById('brand-logo').getAttribute('src')}})()`);
       if (!branding.loaded || !branding.gold || !branding.animated || branding.brand !== 'logo.svg') throw new Error('Packaged gold branding or animated splash is missing');
       process.stdout.write('PASS: gold application branding and animated splash loaded from packaged assets\n');

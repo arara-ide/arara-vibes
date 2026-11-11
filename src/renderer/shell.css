@@ -61,7 +61,7 @@ html[data-glass="true"] #loading, html[data-glass="true"] #signin, html[data-gla
 .model-option { display: flex; align-items: center; justify-content: flex-start; gap: var(--space-2); text-align: left; padding: var(--space-2) var(--space-3); }
 .option-icon { fill: currentColor; width: var(--glyph-size); height: var(--glyph-size); flex: none; }
 .platform-glyph { background: currentColor; -webkit-mask: var(--glyph) center / contain no-repeat; mask: var(--glyph) center / contain no-repeat; }
-html[data-glass="true"] html[data-glass="true"] #recover { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-3); height: 100%; text-align: center; padding: var(--space-4); }
+#recover { position: absolute; inset: 0; z-index: 25; background: var(--vscode-editor-background); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-3); height: 100%; text-align: center; padding: var(--space-4); }
 #recover[hidden] { display: none; }
 #recover p { color: var(--vscode-descriptionForeground); margin: 0; }
 @keyframes menu-in { from { opacity: 0; transform: translateY(-4px) scale(.97); } to { opacity: 1; transform: none; } }

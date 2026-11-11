@@ -8,6 +8,7 @@ const code = process.env.ARARA_CODE_SOURCE || resolve(root, '../arara-code');
 mkdirSync(resolve(root, 'dist'), { recursive: true });
 const bundle = (entry, output, platform = 'node', format = 'cjs') => esbuild.build({ entryPoints: [entry], bundle: true, platform, target: 'es2022', outfile: resolve(root, 'dist', output), external: platform === 'node' ? ['electron', 'electron-liquid-glass'] : [], format });
 await bundle(resolve(root, 'src/main/main.ts'), 'main.cjs');
+await bundle(resolve(root, 'src/main/preload.ts'), 'preload.cjs');
 await bundle(resolve(root, 'src/host/preview.ts'), 'preview.mjs', 'node', 'esm');
 await bundle(resolve(root, 'src/renderer/main.ts'), 'renderer.js', 'browser', 'iife');
 await bundle(resolve(code, 'extensions/arara-update/src/companion.js'), 'companion.cjs');

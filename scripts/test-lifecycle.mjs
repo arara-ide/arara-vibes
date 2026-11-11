@@ -19,7 +19,7 @@ const base = { ...process.env, HOME: home, USERPROFILE: home, APPDATA: join(home
 for (const key of ['ELECTRON_RUN_AS_NODE', 'NODE_OPTIONS', 'VSCODE_PORTABLE', 'VSCODE_IPC_HOOK_CLI', 'ARARA_VIBES_BACKGROUND', 'ARARA_CODE_EXECUTABLE', 'ARARA_CODE_ARGS', 'ARARA_AI_EXTENSION_PATH']) delete base[key];
 const probe = name => {
   const entry = join(scratch, `${name}.cjs`);
-  writeFileSync(entry, `const {app}=require('electron');const fs=require('node:fs');const records=[];const save=()=>fs.writeFileSync(${JSON.stringify(join(scratch, `${name}.json`))},JSON.stringify({pid:process.pid,windows:records}));app.on('browser-window-created',(_event,window)=>{const record={visible:window.isVisible(),focused:window.isFocused()};records.push(record);save();window.on('show',()=>{record.visible=true;save()});window.on('focus',()=>{record.focused=true;save()})});require(${JSON.stringify(join(source, 'out/main.js'))});`);
+  writeFileSync(entry, `const {app}=require('electron');const fs=require('node:fs');const records=[];const save=()=>fs.writeFileSync(${JSON.stringify(join(scratch, `${name}.json`))},JSON.stringify({pid:process.pid,dock:process.platform==='darwin'?app.dock.isVisible():null,windows:records}));app.on('browser-window-created',(_event,window)=>{const record={visible:window.isVisible(),focused:window.isFocused()};records.push(record);save();window.on('show',()=>{record.visible=true;save()});window.on('focus',()=>{record.focused=true;save()})});require(${JSON.stringify(join(source, 'out/main.js'))});`);
   return entry;
 };
 const backgroundEntry = probe('background');
@@ -44,6 +44,7 @@ try {
   for (const stream of [vibes.stdout, vibes.stderr]) stream.on('data', chunk => { output += chunk; });
   await wait(() => { if (vibes.exitCode !== null) throw new Error(output); return state('background')?.windows.length; }, 'Vibes did not start its native host');
   assert.ok(state('background').windows.every(window => !window.visible && !window.focused));
+  if (process.platform === 'darwin') assert.equal(state('background').dock, false, 'The background host must stay out of the Dock');
   const backgroundPid = state('background').pid;
   editor = spawn(executable, [editorEntry, workspace, '--new-window', '--no-sandbox', '--skip-welcome', '--skip-release-notes', ...args, `--user-data-dir=${join(scratch, 'editor-profile')}`], { env: base, stdio: 'ignore' });
   await wait(() => state('editor')?.windows.some(window => window.visible), 'Arara Code could not open beside Vibes');
@@ -57,7 +58,7 @@ try {
   const next = spawn(executable, [editorEntry, '--new-window', '--no-sandbox', ...args, `--user-data-dir=${join(scratch, 'editor-profile')}`], { env: base, stdio: 'ignore' });
   await wait(() => state('editor')?.windows.filter(window => window.visible).length >= 2, 'A new Arara Code window could not open after Vibes quit');
   if (next.exitCode === null) next.kill();
-  process.stdout.write('PASS: hidden Vibes host, independent editor, repeated quit without orphan host, and new editor window after quit\n');
+  process.stdout.write('PASS: hidden Vibes host without a Dock icon, independent editor, repeated quit without orphan host, and new editor window after quit\n');
 } catch (error) {
   process.stderr.write(`Diagnostics: ${scratch}\n`);
   throw error;
