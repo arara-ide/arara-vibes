@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import type { UpdatesState, UpdateProduct } from '../main/updates';
 import { HostConnection } from './connection';
+import type { ShellReply } from '../transport';
 
 export interface ShellActions { run(action: string): Promise<unknown>; state(): { pinned: boolean; expanded: boolean; glass?: boolean; update?: string; updates?: UpdatesState }; locale: string; preferences?(update?: unknown): Promise<unknown>; checkUpdates?(): Promise<unknown>; installUpdate?(product?: UpdateProduct): Promise<unknown>; shortcutRecording?(recording: boolean): void }
 export async function startShell(directory: string, actions: ShellActions) {
@@ -18,6 +19,32 @@ export async function startShell(directory: string, actions: ShellActions) {
     }
   };
   const connection = new HostConnection(emit);
+  const dispatch = async (value: unknown): Promise<ShellReply> => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return { status: 400, result: null };
+    try {
+      if (Buffer.byteLength(JSON.stringify(value)) > 24 * 1024 * 1024) return { status: 413, result: null };
+      const input = value as { action: string; key?: string; id?: string; message?: Record<string, unknown>; html?: string };
+      let result: unknown;
+      if (input.action === 'document' && typeof input.html === 'string') { const key = typeof input.key === 'string' ? input.key : 'default'; if (!documents.has(key) && documents.size >= 128) { return { status: 429, result: null }; } const document = { path: `document-${randomBytes(16).toString('hex')}`, html: input.html }; documents.set(key, document); result = document.path; }
+      else if (input.action === 'discover') result = await connection.discover();
+      else if (input.action === 'connect' && typeof input.id === 'string') result = await connection.connect(input.id);
+      else if (input.action === 'message' && input.message && typeof input.message === 'object') result = await connection.send(input.message);
+      else if (input.action === 'preferences' && actions.preferences) { result = await actions.preferences((input as { preferences?: unknown }).preferences); emit({ type: 'preferences', preferences: result }); }
+      else if (input.action === 'shortcutRecording' && actions.shortcutRecording) actions.shortcutRecording((input as { recording?: unknown }).recording === true);
+      else if (input.action === 'copySignInLink') await connection.copySignInLink();
+      else if (input.action === 'checkUpdates' && actions.checkUpdates) result = await actions.checkUpdates();
+      else if (input.action === 'installUpdate' && actions.installUpdate) {
+        const product = (input as { product?: unknown }).product;
+        if (product !== undefined && product !== 'arara-code' && product !== 'arara-vibes') { return { status: 400, result: null }; }
+        result = await actions.installUpdate(product);
+      }
+      else if (input.action === 'signIn') result = await connection.signIn();
+      else if (input.action === 'disconnect') connection.disconnect();
+      else if (['expand', 'hide', 'startHost'].includes(input.action)) { result = await actions.run(input.action); emit({ type: 'shell', ...actions.state() }); }
+      else { return { status: 400, result: null }; }
+      return { status: 200, result: result ?? null };
+    } catch { return { status: 500, result: { error: 'Action failed' } }; }
+  };
   let origin = '';
   const server = createServer(async (request, response) => {
     response.setHeader('Cache-Control', 'no-store');
@@ -37,26 +64,8 @@ export async function startShell(directory: string, actions: ShellActions) {
         if (request.headers['content-type'] !== 'application/json') { response.writeHead(415).end(); return; }
         let body = '';
         for await (const chunk of request) { body += chunk.toString(); if (Buffer.byteLength(body) > 24 * 1024 * 1024) { response.writeHead(413).end(); return; } }
-        const input = JSON.parse(body) as { action: string; key?: string; id?: string; message?: Record<string, unknown>; html?: string };
-        let result: unknown;
-        if (input.action === 'document' && typeof input.html === 'string') { const key = typeof input.key === 'string' ? input.key : 'default'; if (!documents.has(key) && documents.size >= 128) { response.writeHead(429).end(); return; } const document = { path: `document-${randomBytes(16).toString('hex')}`, html: input.html }; documents.set(key, document); result = document.path; }
-        else if (input.action === 'discover') result = await connection.discover();
-        else if (input.action === 'connect' && typeof input.id === 'string') result = await connection.connect(input.id);
-        else if (input.action === 'message' && input.message && typeof input.message === 'object') result = await connection.send(input.message);
-        else if (input.action === 'preferences' && actions.preferences) { result = await actions.preferences((input as { preferences?: unknown }).preferences); emit({ type: 'preferences', preferences: result }); }
-        else if (input.action === 'shortcutRecording' && actions.shortcutRecording) actions.shortcutRecording((input as { recording?: unknown }).recording === true);
-        else if (input.action === 'copySignInLink') await connection.copySignInLink();
-        else if (input.action === 'checkUpdates' && actions.checkUpdates) result = await actions.checkUpdates();
-        else if (input.action === 'installUpdate' && actions.installUpdate) {
-          const product = (input as { product?: unknown }).product;
-          if (product !== undefined && product !== 'arara-code' && product !== 'arara-vibes') { response.writeHead(400).end(); return; }
-          result = await actions.installUpdate(product);
-        }
-        else if (input.action === 'signIn') result = await connection.signIn();
-        else if (input.action === 'disconnect') connection.disconnect();
-        else if (['expand', 'hide', 'startHost'].includes(input.action)) { result = await actions.run(input.action); emit({ type: 'shell', ...actions.state() }); }
-        else { response.writeHead(400).end(); return; }
-        response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify(result ?? null)); return;
+        const reply = await dispatch(JSON.parse(body));
+        response.setHeader('Content-Type', 'application/json'); response.writeHead(reply.status).end(JSON.stringify(reply.result)); return;
       }
       const document = [...documents.values()].find(item => item.path === route);
       if (request.method === 'GET' && document) { response.setHeader('Content-Type', 'text/html'); response.setHeader('Content-Security-Policy', "frame-ancestors 'self'; base-uri 'none'; form-action 'none'"); response.end(document.html); return; }
@@ -72,5 +81,5 @@ export async function startShell(directory: string, actions: ShellActions) {
   const address = server.address();
   if (!address || typeof address === 'string') throw new Error('Missing shell address');
   origin = `http://127.0.0.1:${address.port}`;
-  return { url: `${origin}${prefix}`, emit, shutdown: () => connection.shutdown(), close() { connection.disconnect(); for (const response of listeners) response.end(); server.close(); server.closeAllConnections(); } };
+  return { url: `${origin}${prefix}`, dispatch, emit, shutdown: () => connection.shutdown(), close() { connection.disconnect(); for (const response of listeners) response.end(); server.close(); server.closeAllConnections(); } };
 }

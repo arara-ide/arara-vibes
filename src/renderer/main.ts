@@ -1,3 +1,5 @@
+import { requestAction } from './action';
+import type { ShellBridge } from '../transport';
 import type { UpdatesState } from '../main/updates';
 import { renderUpdates } from './updates';
 import { t, setLocale } from '../i18n';
@@ -81,9 +83,7 @@ async function reorder(id: string, before?: string) {
 }
 
 async function action(action: string, extra: Record<string, unknown> = {}): Promise<unknown> {
-  const response = await fetch('action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, ...extra }) });
-  if (!response.ok) throw new Error(t('Could not complete the action. Try again.'));
-  return response.json();
+  return requestAction({ action, ...extra }, (window as Window & { araraVibes?: ShellBridge }).araraVibes);
 }
 const send = (message: Record<string, unknown>) => action('message', { message });
 function localize(locale: string) {

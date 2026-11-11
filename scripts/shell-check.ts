@@ -34,6 +34,10 @@ void app.whenReady().then(async () => {
     assert.equal(attempts, 2);
     assert.equal(await evaluate("document.getElementById('brand-logo').getAttribute('src')"), 'logo.svg');
     assert.equal(await evaluate("(async()=>{const response=await fetch('logo-animated.svg');const svg=await response.text();return response.ok&&svg.includes('@keyframes arara-contour')&&svg.includes('#f5cc64')})()"), true);
+    await evaluate("document.getElementById('loading').dataset.off='true'");
+    await evaluate("document.getElementById('recover').hidden=false; const frame=document.createElement('iframe');frame.className='surface-frame';frame.id='recovery-fixture';document.getElementById('stage').prepend(frame)");
+    await until("(()=>{const panel=document.getElementById('recover').getBoundingClientRect();const stage=document.getElementById('stage').getBoundingClientRect();return getComputedStyle(document.getElementById('recover')).position==='absolute'&&panel.left===stage.left&&panel.right===stage.right&&panel.top===stage.top&&panel.bottom===stage.bottom})()");
+    await evaluate("document.getElementById('recover').hidden=true;document.getElementById('recovery-fixture').remove()");
     process.stdout.write('PASS: shell branding loads; failed startup registration shows an error and keeps onboarding open until a successful retry\n');
   } finally { window.destroy(); server.close(); }
   app.quit();

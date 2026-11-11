@@ -12,6 +12,7 @@
     "test:smoke": "env -u ELECTRON_RUN_AS_NODE electron . --smoke-test",
     "test:shell": "node scripts/test-shell.mjs",
     "test:surfaces": "node scripts/test-mac-surfaces.mjs",
+    "test:transport": "node scripts/test-shell.mjs --transport",
     "test:updates": "node scripts/test-shell.mjs --updates",
     "test:autostart:mac": "node scripts/test-macos-autostart.mjs",
     "test:lifecycle": "node scripts/test-lifecycle.mjs",
@@ -36,6 +37,7 @@
     },
     "files": [
       "dist/main.cjs",
+      "dist/preload.cjs",
       "dist/companion.cjs",
       "dist/renderer.js",
       "dist/index.html",

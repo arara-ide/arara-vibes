@@ -77,3 +77,18 @@ it('routes update checks and product selection while rejecting unknown products'
   expect(new TextDecoder().decode((await reader.read()).value)).toContain('"current":"1.135.07400"');
   await reader.cancel();
 });
+
+it('shares action validation and limits between native IPC and HTTP', async () => {
+  const calls: string[] = [];
+  const shell = await startShell('/unused', { locale: 'en', state: () => ({ pinned: true, expanded: true }), run: async action => { calls.push(action); } });
+  cleanups.push(() => shell.close());
+  const post = (input: unknown) => fetch(new URL('action', shell.url), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+  for (const input of [null, [], {}, { action: 'unknown' }, { action: 'installUpdate', product: 'other' }]) {
+    expect((await shell.dispatch(input)).status).toBe(400);
+    expect((await post(input)).status).toBe(400);
+  }
+  expect(await shell.dispatch({ action: 'hide', extra: 'x'.repeat(24 * 1024 * 1024) })).toEqual({ status: 413, result: null });
+  expect(await shell.dispatch({ action: 'hide' })).toEqual({ status: 200, result: null });
+  expect((await post({ action: 'hide' })).status).toBe(200);
+  expect(calls).toEqual(['hide', 'hide']);
+});
