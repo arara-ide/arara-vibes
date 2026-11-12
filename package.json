@@ -15,6 +15,7 @@
     "test:transport": "node scripts/test-shell.mjs --transport",
     "test:updates": "node scripts/test-shell.mjs --updates",
     "test:autostart:mac": "node scripts/test-macos-autostart.mjs",
+    "test:autostart:runtime": "node scripts/test-login-runtime.mjs",
     "test:lifecycle": "node scripts/test-lifecycle.mjs",
     "test:tabs": "node scripts/test-tab-drag.mjs",
     "build": "tsc --noEmit && node scripts/build.mjs",

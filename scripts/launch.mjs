@@ -21,6 +21,6 @@ export async function stageProductionExtension(source, destination, applyEnviron
       if (error.code !== 'EEXIST' || await readlink(link) !== target) throw error;
     }
   }
-  await promisify(execFile)(process.execPath, [applyEnvironment, 'production', join(destination, 'package.json')]);
+  await promisify(execFile)(process.execPath, [applyEnvironment, 'production', join(destination, 'package.json')], { env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } });
   return destination;
 }

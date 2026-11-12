@@ -3,6 +3,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { stageProductionExtension } from '../../scripts/launch.mjs';
 
 export interface BackgroundOptions { executable: string; args?: string[]; root?: string; profile?: string; extension?: string; hosts?: string; development?: boolean; sessionFile?: string; noSandbox?: boolean; locale?: string }
 export function configuredLocale(input: string): string | undefined {
@@ -45,6 +46,10 @@ export function backgroundRuntime(directory: string, installed?: string, noSandb
   if (!installed) return;
   const executable = installedBackgroundExecutable(installed);
   return executable ? { ...shared, executable } : undefined;
+}
+export async function prepareBackgroundRuntime(options: BackgroundOptions, destination = join(homedir(), '.arara/vibes/runtime/production/arara-ai'), provider = options.extension ? resolve(options.extension, '../arara-code/scripts/apply-environment.cjs') : ''): Promise<BackgroundOptions> {
+  if (!options.development || !options.extension || process.env.ARARA_AI_EXTENSION_PATH) return options;
+  return { ...options, extension: await stageProductionExtension(options.extension, destination, provider) };
 }
 export function installedBackgroundExecutable(installed: string, platform = process.platform): string | undefined {
   const installation = codeInstallation(installed, platform);

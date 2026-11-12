@@ -9,7 +9,7 @@ function harness(code = '1.135.07400', vibes = '0.1.0') {
     current: vi.fn(async (product: UpdateProduct) => ({ version: versions[product] })),
     latest: vi.fn(async (product: UpdateProduct) => latest[product]),
     download: vi.fn(async (product: UpdateProduct, version: string) => { order.push(`download:${product}`); return `${product}/${version}`; }),
-    install: vi.fn(async (product: UpdateProduct) => { order.push(`install:${product}`); versions[product] = latest[product]; }),
+    install: vi.fn(async (product: UpdateProduct): Promise<string | void> => { order.push(`install:${product}`); versions[product] = latest[product]; }),
     changed: vi.fn(),
   };
   return { updates: new Updates(deps), versions, latest, order, deps };
