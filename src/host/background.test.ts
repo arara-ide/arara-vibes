@@ -41,7 +41,7 @@ it('prepares production defaults when login starts Electron without npm start', 
     for (const folder of ['dist', 'media', 'themes']) await mkdir(join(source, folder), { recursive: true });
     const manifest = { name: 'arara-ai', publisher: 'arara', contributes: { configuration: { properties: { 'arara.apiUrl': { default: 'http://localhost:7010' }, 'arara.webUrl': { default: 'http://localhost:7210' } } } } };
     await writeFile(join(source, 'package.json'), JSON.stringify(manifest));
-    const provider = resolve(import.meta.dirname, '../../../arara-code/scripts/apply-environment.cjs');
+    const provider = resolve(process.env.ARARA_CODE_SOURCE || resolve(import.meta.dirname, '../../../arara-code'), 'scripts/apply-environment.cjs');
     const options = { executable: '/electron', extension: source, development: true, profile: '/profile', sessionFile: '/session' };
     const prepared = await prepareBackgroundRuntime(options, destination, provider);
     expect(prepared).toEqual({ ...options, extension: destination });
