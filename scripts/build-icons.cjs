@@ -1,4 +1,4 @@
-const { readFileSync, writeFileSync } = require('node:fs');
+const { readFileSync, writeFileSync, mkdirSync } = require('node:fs');
 const { resolve } = require('node:path');
 
 if (!process.versions.electron) {
@@ -22,6 +22,12 @@ if (!process.versions.electron) {
     const image = await painted;
     if (image.isEmpty()) throw new Error('Application icon is empty');
     writeFileSync(resolve(root, `${name}.png`), image.resize({ width: 1024, height: 1024 }).toPNG());
+    if (name === 'icon') {
+      mkdirSync(resolve(root, 'icons'), { recursive: true });
+      for (const size of [16, 24, 32, 48, 64, 128, 256, 512, 1024]) {
+        writeFileSync(resolve(root, 'icons', `${size}x${size}.png`), image.resize({ width: size, height: size }).toPNG());
+      }
+    }
     const entries = [['icp4', 16], ['icp5', 32], ['icp6', 64], ['ic07', 128], ['ic08', 256], ['ic09', 512], ['ic10', 1024]].map(([type, size]) => {
       const png = image.resize({ width: size, height: size }).toPNG();
       const header = Buffer.alloc(8); header.write(type); header.writeUInt32BE(png.length + 8, 4);

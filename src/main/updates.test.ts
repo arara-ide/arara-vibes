@@ -86,3 +86,10 @@ it('preserves the required Windows UserSetup migration before a system installat
   expect(h.updates.state().products[0]).toMatchObject({ status: 'error', error: 'migration' });
   expect(h.deps.install).toHaveBeenCalledTimes(1);
 });
+
+it('keeps ready status with command when Linux .deb returns a manual install command', async () => {
+  const h = harness('1.135.07430', '0.1.0');
+  h.deps.install.mockImplementationOnce(async () => "sudo apt install '/cache/vibes.deb'");
+  await h.updates.update('arara-vibes');
+  expect(h.updates.state().products[1]).toMatchObject({ status: 'ready', command: "sudo apt install '/cache/vibes.deb'" });
+});

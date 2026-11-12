@@ -44,7 +44,12 @@ interface UpdateInstaller {
   quit(): void;
 }
 
-export async function installPreparedUpdate(file: string, installer: UpdateInstaller) {
+export function debInstallCommand(file: string) {
+  return `sudo apt install '${file.replace(/'/g, `'\\''`)}'`;
+}
+
+export async function installPreparedUpdate(file: string, installer: UpdateInstaller): Promise<string | undefined> {
+  if (installer.platform === 'linux' && file.endsWith('.deb')) return debInstallCommand(file);
   if (installer.platform === 'darwin') await installer.installMacDmg(file, 'arara-vibes', { appRoot: installer.appRoot, waitPid: installer.pid });
   else if (installer.platform === 'linux' && file.endsWith('.AppImage')) {
     if (!installer.appImage || !installer.installAppImage) throw new Error('AppImage installation path unavailable');

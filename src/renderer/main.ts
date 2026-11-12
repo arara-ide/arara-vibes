@@ -386,7 +386,7 @@ bind('sign-in-copy', async () => { await action('copySignInLink'); feedback(t('S
 let updatesState: UpdatesState = { products: [], busy: false };
 let updatesDismissed = false;
 function drawUpdates() {
-  renderUpdates(element('update-products'), updatesState, async product => { await action('installUpdate', { product }); });
+  renderUpdates(element('update-products'), updatesState, async product => { await action('installUpdate', { product }); }, text => action('copyText', { text }));
   element('update-text').textContent = t('Keep Arara Vibes and Arara Code up to date. Arara Code restarts before Arara Vibes. Finish ongoing tasks before updating.');
   element<HTMLButtonElement>('update-install').disabled = updatesState.busy || !updatesState.products.some(item => item.status === 'available');
   element<HTMLButtonElement>('update-check').disabled = updatesState.busy;

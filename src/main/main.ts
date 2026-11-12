@@ -1,5 +1,5 @@
 import { registerShellBridge } from './bridge';
-import { app, BrowserWindow, globalShortcut, Menu, nativeTheme, Tray, nativeImage, screen, shell, systemPreferences } from 'electron';
+import { app, BrowserWindow, clipboard, globalShortcut, Menu, nativeTheme, Tray, nativeImage, screen, shell, systemPreferences } from 'electron';
 import { join, resolve } from 'node:path';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -10,7 +10,7 @@ import { Updates, UpdateFailure, type UpdateProduct } from './updates';
 import { updateCode } from './codeUpdate';
 import { codeInstallation } from '../host/installation';
 import { BackgroundHost, backgroundRuntime } from '../host/background';
-import { CHECK_INTERVAL_MS, installPreparedUpdate } from './update';
+import { CHECK_INTERVAL_MS, debInstallCommand, installPreparedUpdate } from './update';
 import { defaultShortcut, loadPreferences, normalizePreferences, resolveLanguage, savePreferences, loginCommand, setMacAutostart, setLinuxAutostart, type Preferences } from './preferences';
 import { APP_ICON, TRAY_ASSETS } from './tray';
 
@@ -96,6 +96,7 @@ const installedCode = () => runtime.installedCompanion('arara-code');
 const installation = () => codeInstallation(installedCode());
 const updateOptions = (product: UpdateProduct) => ({ signal: abort.signal, arch: app.runningUnderARM64Translation ? 'arm64' : process.arch, format: product === 'arara-code' ? installation()?.format : process.platform === 'linux' && !process.env.APPIMAGE ? 'deb' : undefined });
 async function installCodeUpdate(file: string, version: string) {
+  if (process.platform === 'linux' && file.endsWith('.deb')) return debInstallCommand(file);
   const previous = installation();
   if (process.platform === 'win32' && previous?.product.target === 'user') throw new UpdateFailure('migration');
   codeUpdating = true;
@@ -130,7 +131,7 @@ function createUpdates() {
     download: (product, version) => runtime.prepareCompanion(product, { ...updateOptions(product), version, root: join(app.getPath('userData'), 'updates', product, version) }),
     install: async (product, file, version) => {
       if (product === 'arara-code') return installCodeUpdate(file, version);
-      await installPreparedUpdate(file, { platform: process.platform, appRoot: process.execPath, pid: process.pid, appImage: process.env.APPIMAGE, installAppImage: (...args) => runtime.installAppImage(...args), installMacDmg: (...args) => runtime.installMacDmg(...args), openPath: file => shell.openPath(file), quit: () => app.quit() });
+      return installPreparedUpdate(file, { platform: process.platform, appRoot: process.execPath, pid: process.pid, appImage: process.env.APPIMAGE, installAppImage: (...args) => runtime.installAppImage(...args), installMacDmg: (...args) => runtime.installMacDmg(...args), openPath: file => shell.openPath(file), quit: () => app.quit() });
     },
     changed: state => server?.emit({ type: 'updates', updates: state }),
   });
@@ -193,7 +194,7 @@ else {
     const locale = resolveLanguage(preferences.language, app.getLocale());
     setLocale(locale);
     updates = createUpdates();
-    server = await startShell(__dirname, { run, state: () => ({ pinned, expanded, glass, updates: updates.state() }), locale, preferences: updatePreferences, checkUpdates: () => updates.check(), installUpdate: product => updates.update(product), shortcutRecording });
+    server = await startShell(__dirname, { run, state: () => ({ pinned, expanded, glass, updates: updates.state() }), locale, preferences: updatePreferences, checkUpdates: () => updates.check(), installUpdate: product => updates.update(product), copyText: text => clipboard.writeText(text), shortcutRecording });
     void watchUpdates();
     const area = screen.getPrimaryDisplay().workArea;
     const width = Math.min(MIN_WIDTH, area.width);

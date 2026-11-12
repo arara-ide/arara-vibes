@@ -68,3 +68,10 @@ it('keeps Vibes open when a Linux AppImage restart cannot be prepared', async ()
   await expect(installPreparedUpdate('/cache/new.AppImage', { platform: 'linux', appRoot: '/tmp/mount/arara-vibes', appImage: '/home/test/Vibes.AppImage', pid: 1234, installAppImage: vi.fn(async () => { throw Error('No user manager'); }), installMacDmg: vi.fn(), openPath: vi.fn(), quit })).rejects.toThrow('No user manager');
   expect(quit).not.toHaveBeenCalled();
 });
+
+
+it('returns a copyable install command for a Linux .deb instead of opening it or quitting', async () => {
+  const quit = vi.fn(), openPath = vi.fn(async () => '');
+  await expect(installPreparedUpdate("/cache/it's.deb", { platform: 'linux', appRoot: '/opt', pid: 1, installMacDmg: vi.fn(), openPath, quit })).resolves.toBe("sudo apt install '/cache/it'\\''s.deb'");
+  expect(openPath).not.toHaveBeenCalled(); expect(quit).not.toHaveBeenCalled();
+});

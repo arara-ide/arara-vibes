@@ -6,7 +6,7 @@ import type { UpdatesState, UpdateProduct } from '../main/updates';
 import { HostConnection } from './connection';
 import type { ShellReply } from '../transport';
 
-export interface ShellActions { run(action: string): Promise<unknown>; state(): { pinned: boolean; expanded: boolean; glass?: boolean; update?: string; updates?: UpdatesState }; locale: string; preferences?(update?: unknown): Promise<unknown>; checkUpdates?(): Promise<unknown>; installUpdate?(product?: UpdateProduct): Promise<unknown>; shortcutRecording?(recording: boolean): void }
+export interface ShellActions { run(action: string): Promise<unknown>; state(): { pinned: boolean; expanded: boolean; glass?: boolean; update?: string; updates?: UpdatesState }; locale: string; preferences?(update?: unknown): Promise<unknown>; checkUpdates?(): Promise<unknown>; installUpdate?(product?: UpdateProduct): Promise<unknown>; copyText?(text: string): void; shortcutRecording?(recording: boolean): void }
 export async function startShell(directory: string, actions: ShellActions) {
   const secret = randomBytes(24).toString('hex');
   const prefix = `/${secret}/`;
@@ -23,7 +23,7 @@ export async function startShell(directory: string, actions: ShellActions) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return { status: 400, result: null };
     try {
       if (Buffer.byteLength(JSON.stringify(value)) > 24 * 1024 * 1024) return { status: 413, result: null };
-      const input = value as { action: string; key?: string; id?: string; message?: Record<string, unknown>; html?: string };
+      const input = value as { action: string; key?: string; id?: string; message?: Record<string, unknown>; html?: string; text?: unknown };
       let result: unknown;
       if (input.action === 'document' && typeof input.html === 'string') { const key = typeof input.key === 'string' ? input.key : 'default'; if (!documents.has(key) && documents.size >= 128) { return { status: 429, result: null }; } const document = { path: `document-${randomBytes(16).toString('hex')}`, html: input.html }; documents.set(key, document); result = document.path; }
       else if (input.action === 'discover') result = await connection.discover();
@@ -32,6 +32,7 @@ export async function startShell(directory: string, actions: ShellActions) {
       else if (input.action === 'preferences' && actions.preferences) { result = await actions.preferences((input as { preferences?: unknown }).preferences); emit({ type: 'preferences', preferences: result }); }
       else if (input.action === 'shortcutRecording' && actions.shortcutRecording) actions.shortcutRecording((input as { recording?: unknown }).recording === true);
       else if (input.action === 'copySignInLink') await connection.copySignInLink();
+      else if (input.action === 'copyText' && actions.copyText && typeof input.text === 'string') actions.copyText(input.text);
       else if (input.action === 'checkUpdates' && actions.checkUpdates) result = await actions.checkUpdates();
       else if (input.action === 'installUpdate' && actions.installUpdate) {
         const product = (input as { product?: unknown }).product;

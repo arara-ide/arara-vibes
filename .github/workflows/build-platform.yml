@@ -53,6 +53,24 @@ jobs:
             windows) npm run package:win ;;
             linux) npm run package:linux ;;
           esac
+      - name: Validate installed Linux package
+        if: inputs.platform == 'linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ./release/*.deb
+          test "$(stat -c '%U:%G:%a' /opt/AraraVibes/chrome-sandbox)" = root:root:4755
+          test -f /usr/share/icons/hicolor/48x48/apps/arara-vibes.png
+          test -f /usr/share/icons/hicolor/256x256/apps/arara-vibes.png
+          xvfb-run -a env -u ELECTRON_RUN_AS_NODE ARARA_VIBES_DISABLE_UPDATES=1 arara-vibes --smoke-test
+          mkdir -p release/appimage-smoke
+          cd release/appimage-smoke
+          ../*.AppImage --appimage-extract > /dev/null
+          xvfb-run -a env -u ELECTRON_RUN_AS_NODE ARARA_VIBES_DISABLE_UPDATES=1 APPDIR="$PWD/squashfs-root" APPIMAGE="$(realpath ../*.AppImage)" ./squashfs-root/AppRun --smoke-test
+      - name: Validate native Windows application and icon
+        if: inputs.platform == 'windows'
+        shell: pwsh
+        run: ./scripts/test-windows-package.ps1
       - name: Collect packages
         shell: bash
         run: |
