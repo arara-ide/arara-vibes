@@ -8,7 +8,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run && node --test scripts/start.test.mjs scripts/sign-macos.test.mjs scripts/package.test.mjs",
+    "test": "vitest run && node --test scripts/start.test.mjs scripts/sign-macos.test.mjs scripts/package.test.mjs scripts/store.test.mjs",
     "test:smoke": "env -u ELECTRON_RUN_AS_NODE electron . --smoke-test",
     "test:shell": "node scripts/test-shell.mjs",
     "test:surfaces": "node scripts/test-mac-surfaces.mjs",

@@ -24,6 +24,10 @@ if (!process.versions.electron) {
     writeFileSync(resolve(root, `${name}.png`), image.resize({ width: 1024, height: 1024 }).toPNG());
     if (name === 'icon') {
       mkdirSync(resolve(root, 'icons'), { recursive: true });
+      mkdirSync(resolve(root, 'msix'), { recursive: true });
+      for (const [asset, size] of [['StoreLogo', 50], ['Square44x44Logo', 44], ['Square150x150Logo', 150]]) {
+        writeFileSync(resolve(root, 'msix', `${asset}.png`), image.resize({ width: size, height: size }).toPNG());
+      }
       for (const size of [16, 24, 32, 48, 64, 128, 256, 512, 1024]) {
         writeFileSync(resolve(root, 'icons', `${size}x${size}.png`), image.resize({ width: size, height: size }).toPNG());
       }
