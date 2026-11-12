@@ -103,6 +103,35 @@ jobs:
       version: ${{ needs.version.outputs.value }}
       artifact: windows
 
+  store-windows:
+    if: github.ref == 'refs/heads/main' && vars.MSSTORE_PACKAGE_NAME != '' && vars.MSSTORE_PRODUCT_ID != ''
+    needs: [version, windows, release-windows]
+    runs-on: windows-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-store
+          path: store
+      - uses: microsoft/microsoft-store-apppublisher@v1.4
+      - name: Publicar na Microsoft Store
+        shell: pwsh
+        env:
+          STORE_TENANT_ID: ${{ secrets.MSSTORE_TENANT_ID }}
+          STORE_SELLER_ID: ${{ secrets.MSSTORE_SELLER_ID }}
+          STORE_CLIENT_ID: ${{ secrets.MSSTORE_CLIENT_ID }}
+          STORE_CLIENT_SECRET: ${{ secrets.MSSTORE_CLIENT_SECRET }}
+          STORE_PRODUCT_ID: ${{ vars.MSSTORE_PRODUCT_ID }}
+          RELEASE_VERSION: ${{ needs.version.outputs.value }}
+        run: |
+          foreach ($name in 'STORE_TENANT_ID','STORE_SELLER_ID','STORE_CLIENT_ID','STORE_CLIENT_SECRET','STORE_PRODUCT_ID') { if (-not [Environment]::GetEnvironmentVariable($name)) { throw "$name is empty" } }
+          msstore reconfigure --tenantId $env:STORE_TENANT_ID --sellerId $env:STORE_SELLER_ID --clientId $env:STORE_CLIENT_ID --clientSecret $env:STORE_CLIENT_SECRET
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          msstore publish "store/AraraVibes-x64-$env:RELEASE_VERSION.msix" -id $env:STORE_PRODUCT_ID
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
   release-macos-x64:
     if: github.ref == 'refs/heads/main'
     needs: [version, macos-x64]

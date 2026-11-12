@@ -71,6 +71,28 @@ jobs:
         if: inputs.platform == 'windows'
         shell: pwsh
         run: ./scripts/test-windows-package.ps1
+      - name: Package MSIX for Microsoft Store
+        if: inputs.platform == 'windows' && github.ref == 'refs/heads/main' && vars.MSSTORE_PACKAGE_NAME != ''
+        env:
+          MSIX_IDENTITY_NAME: ${{ vars.MSSTORE_PACKAGE_NAME }}
+          MSIX_PUBLISHER: ${{ vars.MSSTORE_PUBLISHER }}
+          MSIX_PUBLISHER_DISPLAY_NAME: ${{ vars.MSSTORE_PUBLISHER_DISPLAY_NAME }}
+        run: node scripts/package-msix.mjs
+      - name: Validate Microsoft Store package
+        if: inputs.platform == 'windows' && github.ref == 'refs/heads/main' && vars.MSSTORE_PACKAGE_NAME != ''
+        shell: pwsh
+        env:
+          MSIX_IDENTITY_NAME: ${{ vars.MSSTORE_PACKAGE_NAME }}
+          MSIX_PUBLISHER: ${{ vars.MSSTORE_PUBLISHER }}
+        run: ./scripts/test-windows-msix.ps1 -Version '${{ inputs.version }}'
+      - name: Upload Microsoft Store package
+        if: inputs.platform == 'windows' && github.ref == 'refs/heads/main' && vars.MSSTORE_PACKAGE_NAME != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-store
+          path: release/AraraVibes-x64-${{ inputs.version }}.msix
+          retention-days: 14
+          if-no-files-found: error
       - name: Collect packages
         shell: bash
         run: |
