@@ -151,5 +151,10 @@ html:has(#loading:not([data-off="true"])) #brand-logo { opacity: 0; transition: 
 .update-product p { margin: var(--space-1) 0 0; color: var(--vscode-descriptionForeground); font-size: var(--font-small); overflow-wrap: anywhere; }
 .update-product button { flex-shrink: 0; }
 .update-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--space-2); }
+.update-product pre.code { position: relative; margin: var(--space-2) 0 0; padding: 10px 40px 10px 12px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--vscode-foreground) 8%, transparent); white-space: pre; user-select: text; }
+.update-product pre.code > code { display: block; overflow-x: auto; font-family: var(--vscode-editor-font-family, monospace); font-size: var(--font-small); }
+.update-product pre.code .copy { position: absolute; top: 6px; right: 6px; display: flex; min-height: 0; padding: 5px; border-radius: var(--radius-xs); background: color-mix(in srgb, var(--vscode-foreground) 10%, transparent); color: var(--vscode-foreground); }
+.update-product pre.code .copy svg { width: 12px; height: 12px; opacity: .55; }
+.update-product pre.code .copy:hover svg, .update-product pre.code .copy:focus-visible svg { opacity: .85; }
 
 html[data-mac="true"] :is(#loading, #signin, #onboarding, #recover, #update) { background: transparent; }

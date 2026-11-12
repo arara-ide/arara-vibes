@@ -8,7 +8,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run && node --test scripts/start.test.mjs scripts/sign-macos.test.mjs",
+    "test": "vitest run && node --test scripts/start.test.mjs scripts/sign-macos.test.mjs scripts/package.test.mjs",
     "test:smoke": "env -u ELECTRON_RUN_AS_NODE electron . --smoke-test",
     "test:shell": "node scripts/test-shell.mjs",
     "test:surfaces": "node scripts/test-mac-surfaces.mjs",
@@ -21,10 +21,10 @@
     "lint": "tsc --noEmit",
     "check:i18n": "node scripts/check-i18n.mjs",
     "start": "node scripts/start.mjs",
-    "package": "electron-builder --publish never",
-    "package:mac": "electron-builder --mac --publish never",
-    "package:win": "electron-builder --win --publish never",
-    "package:linux": "electron-builder --linux --publish never",
+    "package": "node scripts/package.mjs",
+    "package:mac": "node scripts/package.mjs --mac",
+    "package:win": "node scripts/package.mjs --win",
+    "package:linux": "node scripts/package.mjs --linux",
     "preview": "node dist/preview.mjs",
     "build:icons": "node scripts/build-icons.cjs"
   },
@@ -92,5 +92,6 @@
   },
   "optionalDependencies": {
     "electron-liquid-glass": "^1.1.1"
-  }
+  },
+  "homepage": "https://arara.code.app.br"
 }

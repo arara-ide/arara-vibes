@@ -63,6 +63,16 @@ ARARA_VIBES_HOSTS=<pasta mostrada pelo teste> npm run preview
 
 Abra a URL que aparecer. Ações nativas da janela só funcionam no app Electron.
 
+## Pacotes Linux e Windows
+
+`npm run package:linux` gera o `.deb` e o AppImage. O `.deb` instala em `/opt/AraraVibes`, sem espaços no caminho do executável, e configura o helper `chrome-sandbox` como `root:root` com modo `4755`. A configuração não depende de um teste de namespaces executado como root: esse teste não representa as restrições de AppArmor da sessão do usuário. Os dados continuam em `~/.config/arara-vibes` e `~/.arara/vibes`.
+
+O lançador Linux remove `ELECTRON_RUN_AS_NODE` herdado. No AppImage, aplica também `--no-sandbox` ao abrir diretamente o arquivo, assim como a entrada desktop do formato já solicitava. O AppImage montado não permite usar seu helper SUID; para executar com o sandbox do Chromium ativo, use o `.deb`. Nenhuma configuração global de AppArmor ou do kernel é alterada.
+
+Os ícones Linux são distribuídos em 16, 24, 32, 48, 64, 128, 256, 512 e 1024 px; a instalação atualiza os caches de aplicações e ícones. `npm run build:icons` regenera esses arquivos a partir da marca original.
+
+`npm run package:win` conserva o nome Arara Vibes e gera instalador NSIS e ZIP com a marca dourada no executável. A esteira valida o ícone extraído pelo Windows e executa o smoke test do aplicativo empacotado no runner Windows. No Linux, instala o `.deb`, confere permissões e ícones e executa o smoke test do pacote instalado e do AppImage extraído. Os testes usam perfis temporários e não enviam mensagens em contas reais.
+
 ## Créditos
 
 Ícones: Codicons, da Microsoft, licença MIT (veja `assets/codicons-LICENSE`). Logo: marca pública do Arara Code.

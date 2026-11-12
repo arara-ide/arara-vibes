@@ -79,5 +79,8 @@
   "Update {0}": "Update {0}",
   "Open Updates to install or update Arara Code and start the chat.": "Open Updates to install or update Arara Code and start the chat.",
   "Ready to install": "Ready to install",
-  "Close Arara Code and uninstall the old UserSetup installation while keeping your data. Then try the update again.": "Close Arara Code and uninstall the old UserSetup installation while keeping your data. Then try the update again."
+  "Close Arara Code and uninstall the old UserSetup installation while keeping your data. Then try the update again.": "Close Arara Code and uninstall the old UserSetup installation while keeping your data. Then try the update again.",
+  "Copy command": "Copy command",
+  "Copied": "Copied",
+  "Run this command in a terminal to install, then reopen the app.": "Run this command in a terminal to install, then reopen the app."
 }
