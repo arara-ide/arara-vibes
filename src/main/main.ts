@@ -9,7 +9,7 @@ import { setLocale, t } from '../i18n';
 import { Updates, UpdateFailure, type UpdateProduct } from './updates';
 import { updateCode } from './codeUpdate';
 import { codeInstallation } from '../host/installation';
-import { BackgroundHost, backgroundRuntime } from '../host/background';
+import { BackgroundHost, backgroundRuntime, prepareBackgroundRuntime } from '../host/background';
 import { CHECK_INTERVAL_MS, debInstallCommand, installPreparedUpdate } from './update';
 import { defaultShortcut, loadPreferences, normalizePreferences, resolveLanguage, savePreferences, loginCommand, setMacAutostart, setLinuxAutostart, type Preferences } from './preferences';
 import { APP_ICON, TRAY_ASSETS } from './tray';
@@ -178,7 +178,7 @@ async function run(action: string) {
         void updates.check();
       }
       if (!options) throw new Error(t('Open Updates to install or update Arara Code and start the chat.'));
-      background = new BackgroundHost(options);
+      background = new BackgroundHost(await prepareBackgroundRuntime(options));
     }
     await background.start();
   }

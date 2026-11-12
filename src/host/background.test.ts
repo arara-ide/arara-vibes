@@ -29,6 +29,35 @@ it('reads the original runtime language without accepting commented values or ma
 
 afterEach(() => vi.unstubAllEnvs());
 
+it('prepares production defaults when login starts Electron without npm start', async () => {
+  const { prepareBackgroundRuntime } = await import('./background');
+  const { mkdtemp, mkdir, writeFile, readFile, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join, resolve } = await import('node:path');
+  const root = await mkdtemp(join(tmpdir(), 'vibes-login-runtime-'));
+  try {
+    const source = join(root, 'arara-ai');
+    const destination = join(root, 'runtime');
+    for (const folder of ['dist', 'media', 'themes']) await mkdir(join(source, folder), { recursive: true });
+    const manifest = { name: 'arara-ai', publisher: 'arara', contributes: { configuration: { properties: { 'arara.apiUrl': { default: 'http://localhost:7010' }, 'arara.webUrl': { default: 'http://localhost:7210' } } } } };
+    await writeFile(join(source, 'package.json'), JSON.stringify(manifest));
+    const provider = resolve(import.meta.dirname, '../../../arara-code/scripts/apply-environment.cjs');
+    const options = { executable: '/electron', extension: source, development: true, profile: '/profile', sessionFile: '/session' };
+    const prepared = await prepareBackgroundRuntime(options, destination, provider);
+    expect(prepared).toEqual({ ...options, extension: destination });
+    const staged = JSON.parse(await readFile(join(destination, 'package.json'), 'utf8'));
+    expect(staged.araraEnvironment).toBe('production');
+    expect(staged.contributes.configuration.properties['arara.apiUrl'].default).toBe('https://api.code.app.br');
+    expect(JSON.parse(await readFile(join(source, 'package.json'), 'utf8'))).toEqual(manifest);
+    await expect(prepareBackgroundRuntime(options, destination, join(root, 'missing.cjs'))).rejects.toThrow();
+    for (const custom of [{ ...options, development: false }, { executable: '/installed' }]) {
+      await expect(prepareBackgroundRuntime(custom, destination, provider)).resolves.toBe(custom);
+    }
+    vi.stubEnv('ARARA_AI_EXTENSION_PATH', source);
+    await expect(prepareBackgroundRuntime(options, destination, provider)).resolves.toBe(options);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 it('always isolates the host profile, including installed apps and explicit executables', async () => {
   const { mkdtempSync, mkdirSync, writeFileSync } = await import('node:fs');
   const { tmpdir } = await import('node:os');
