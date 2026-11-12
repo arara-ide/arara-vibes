@@ -249,6 +249,16 @@ else {
         if (setup && (setup.background !== 'rgba(0, 0, 0, 0.2)' || setup.radius !== '12px' || setup.padding !== '12px')) throw new Error(`Platform setup surface failed: ${JSON.stringify(setup)}`);
       }
 
+      let chatFrame;
+      for (const frame of window.webContents.mainFrame.frames) {
+        if (await frame.executeJavaScript("!!document.querySelector('#input')").catch(() => false)) { chatFrame = frame; break; }
+      }
+      if (!chatFrame) throw new Error('Original chat frame missing for reasoning regression');
+      await chatFrame.executeJavaScript(`(()=>{const input=document.querySelector('#input');input.textContent='Integration reasoning test';input.dispatchEvent(new InputEvent('input',{bubbles:true}));document.querySelector('#send').click()})()`);
+      await chatFrame.executeJavaScript(`new Promise((resolve,reject)=>{const deadline=Date.now()+10000;const check=()=>{const node=document.querySelector('.reasoning-title');if(node){const head=node.querySelector('.reasoning-head');if(node.querySelector('.chevron,.reasoning-box,.reasoning-body')||head.hasAttribute('role')||head.hasAttribute('tabindex')||head.hasAttribute('aria-expanded'))reject(Error('Reasoning title is expandable or repeats its body'));else resolve(true)}else if(Date.now()>deadline)reject(Error('Native reasoning title did not appear'));else setTimeout(check,10)};check()})`);
+      await chatFrame.executeJavaScript(`new Promise((resolve,reject)=>{const deadline=Date.now()+10000;const check=()=>{if(!document.querySelector('.reasoning'))resolve(true);else if(Date.now()>deadline)reject(Error('Native reasoning did not finish'));else setTimeout(check,50)};check()})`);
+      process.stdout.write('PASS: native chat reasoning title has no arrow, body or expansion control\n');
+
       for (let index = 0; index < 3; index++) {
         const count = await window.webContents.executeJavaScript(`document.querySelectorAll('[role=tab]').length`);
         await window.webContents.executeJavaScript(`document.querySelector('#platform-options button').click()`);
