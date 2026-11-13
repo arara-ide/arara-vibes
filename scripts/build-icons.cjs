@@ -9,6 +9,7 @@ if (!process.versions.electron) {
   child.on('exit', code => { process.exitCode = code ?? 1; });
 } else {
   const { app, BrowserWindow } = require('electron');
+  app.commandLine.appendSwitch('force-device-scale-factor', '1');
   app.whenReady().then(async () => {
     const root = resolve(__dirname, '../build');
     const window = new BrowserWindow({ width: 1024, height: 1024, show: false, transparent: true, frame: false, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, offscreen: true } });
@@ -23,6 +24,8 @@ if (!process.versions.electron) {
     writeFileSync(resolve(root, 'icon.png'), image.resize({ width: 1024, height: 1024 }).toPNG());
     mkdirSync(resolve(root, 'icons'), { recursive: true });
     mkdirSync(resolve(root, 'msix'), { recursive: true });
+    mkdirSync(resolve(root, 'store'), { recursive: true });
+    writeFileSync(resolve(root, 'store', '300x300.png'), image.resize({ width: 300, height: 300 }).toPNG());
     for (const [asset, size] of [['StoreLogo', 50], ['Square44x44Logo', 44], ['Square150x150Logo', 150]]) {
       writeFileSync(resolve(root, 'msix', `${asset}.png`), image.resize({ width: size, height: size }).toPNG());
     }
@@ -36,6 +39,20 @@ if (!process.versions.electron) {
     });
     const header = Buffer.alloc(8); header.write('icns'); header.writeUInt32BE(8 + entries.reduce((total, entry) => total + entry.length, 0), 4);
     writeFileSync(resolve(root, 'icon.icns'), Buffer.concat([header, ...entries]));
+    const windowsSizes = [16, 24, 32, 48, 64, 128, 256];
+    const windowsHeader = Buffer.alloc(6);
+    windowsHeader.writeUInt16LE(1, 2); windowsHeader.writeUInt16LE(windowsSizes.length, 4);
+    let offset = 6 + windowsSizes.length * 16;
+    const windowsEntries = windowsSizes.map(size => {
+      const png = image.resize({ width: size, height: size }).toPNG();
+      const entry = Buffer.alloc(16);
+      entry[0] = size % 256; entry[1] = size % 256;
+      entry.writeUInt16LE(1, 4); entry.writeUInt16LE(32, 6);
+      entry.writeUInt32LE(png.length, 8); entry.writeUInt32LE(offset, 12);
+      offset += png.length;
+      return { entry, png };
+    });
+    writeFileSync(resolve(root, 'icon.ico'), Buffer.concat([windowsHeader, ...windowsEntries.map(item => item.entry), ...windowsEntries.map(item => item.png)]));
     window.destroy();
     process.stdout.write('Generated application icons.\n');
     app.quit();

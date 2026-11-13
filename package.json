@@ -11,6 +11,7 @@
     "test": "vitest run && node --test scripts/start.test.mjs scripts/sign-macos.test.mjs scripts/package.test.mjs scripts/store.test.mjs",
     "test:smoke": "env -u ELECTRON_RUN_AS_NODE electron . --smoke-test",
     "test:shell": "node scripts/test-shell.mjs",
+    "test:placement": "node scripts/test-shell.mjs --placement",
     "test:surfaces": "node scripts/test-mac-surfaces.mjs",
     "test:transport": "node scripts/test-shell.mjs --transport",
     "test:updates": "node scripts/test-shell.mjs --updates",
@@ -27,7 +28,8 @@
     "package:win": "node scripts/package.mjs --win",
     "package:linux": "node scripts/package.mjs --linux",
     "preview": "node dist/preview.mjs",
-    "build:icons": "node scripts/build-icons.cjs"
+    "build:icons": "node scripts/build-icons.cjs",
+    "test:icons": "node scripts/test-icons.cjs"
   },
   "build": {
     "appId": "br.app.code.arara.vibes",
@@ -68,7 +70,7 @@
         "nsis",
         "zip"
       ],
-      "icon": "build/icon.png"
+      "icon": "build/icon.ico"
     },
     "linux": {
       "maintainer": "Arara <contato@arara.code.app.br>",

@@ -54,7 +54,7 @@ test('Linux packaging keeps branding and icons while removing spaces from the in
   assert.match(desktop, /^Exec=\/opt\/AraraVibes\/arara-vibes %U$/m);
   assert.match(desktop, /^Icon=arara-vibes$/m);
   assert.equal(manifest.build.productName, 'Arara Vibes');
-  assert.equal(manifest.build.win.icon, 'build/icon.png');
+  assert.equal(manifest.build.win.icon, 'build/icon.ico');
   for (const size of [16, 24, 32, 48, 64, 128, 256, 512, 1024]) {
     const png = await readFile(new URL(`../${config.linux.icon}/${size}x${size}.png`, import.meta.url));
     assert.equal(png.readUInt32BE(16), size);
