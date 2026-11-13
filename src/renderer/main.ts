@@ -2,6 +2,7 @@ import { requestAction } from './action';
 import type { ShellBridge } from '../transport';
 import type { UpdatesState } from '../main/updates';
 import { renderUpdates } from './updates';
+import { Loading } from './loading';
 import { t, setLocale } from '../i18n';
 import { chatDocument } from './document';
 import type { HostInfo } from '../host/connection';
@@ -22,7 +23,6 @@ let glass = false;
 document.documentElement.dataset.mac = String(/Mac/.test(navigator.platform));
 let requested: { id: string; preserveFocus: boolean } | undefined;
 const seenTabs = new Set<string>();
-let loadingTimeout: ReturnType<typeof setTimeout> | undefined;
 let dragged: string | undefined;
 let dragPreview: HTMLElement | undefined;
 let dragPoint: DragPoint | undefined;
@@ -94,15 +94,9 @@ function localize(locale: string) {
 function feedback(text = '', error = false) {
   const node = element('feedback'); node.textContent = text; node.hidden = !text; node.dataset.error = String(error);
 }
-const bootAt = Date.now();
-let bootTimer: ReturnType<typeof setTimeout> | undefined;
+const loadingIndicator = new Loading(loading => { element('loading').dataset.off = String(!loading); }, () => feedback(t('The conversation did not load. Try again.'), true));
 function busy(loading: boolean) {
-  if (!element('update').hidden) loading = false;
-  clearTimeout(loadingTimeout); clearTimeout(bootTimer);
-  const wait = bootAt + 2000 - Date.now();
-  if (!loading && element('update').hidden && wait > 0) { bootTimer = setTimeout(() => busy(false), wait); return; }
-  element('loading').dataset.off = String(!loading);
-  if (loading) loadingTimeout = setTimeout(() => { element('loading').dataset.off = 'true'; feedback(t('The conversation did not load. Try again.'), true); }, 20000);
+  loadingIndicator.set(loading && !!element('update').hidden);
 }
 function reset() {
   for (const view of views.values()) view.frame.remove();
@@ -307,6 +301,7 @@ function renderOptions(platforms: { id: string; label: string; icon?: string }[]
 }
 function receive(event: Record<string, unknown>) {
   if (event.type === 'openUpdates') { openUpdates(); return; }
+  if (event.type === 'shell' && typeof event.locale === 'string' && !activeHost) localize(event.locale);
   if ((event.type === 'shell' || event.type === 'updates') && event.updates) {
     updatesState = event.updates as UpdatesState;
     if (!updatesDismissed && updatesState.products.some(item => item.status === 'available')) openUpdates();
@@ -316,7 +311,6 @@ function receive(event: Record<string, unknown>) {
   if (event.type === 'preferences') { applyPreferences(event.preferences as VibesPreferences); return; }
   if (event.type === 'shell') {
     glass = event.glass === true; document.documentElement.dataset.glass = String(glass);
-    if (typeof event.locale === 'string' && !activeHost) localize(event.locale);
     element('expand').setAttribute('aria-expanded', String(event.expanded));
     element('expand').title = t(event.expanded ? 'Collapse' : 'Expand chat'); element('expand').setAttribute('aria-label', element('expand').title);
     element('expand').querySelector('use')?.setAttribute('href', `icons.svg#chevron-${event.expanded ? 'up' : 'down'}`);
@@ -405,14 +399,13 @@ let updatesState: UpdatesState = { products: [], busy: false };
 let updatesDismissed = false;
 function drawUpdates() {
   renderUpdates(element('update-products'), updatesState, async product => { await action('installUpdate', { product }); }, text => action('copyText', { text }));
-  element('update-text').textContent = t('Keep Arara Vibes and Arara Code up to date. Arara Code restarts before Arara Vibes. Finish ongoing tasks before updating.');
+  element('update-text').textContent = t('Finish ongoing tasks before updating.');
   element<HTMLButtonElement>('update-install').disabled = updatesState.busy || !updatesState.products.some(item => item.status === 'available');
   element<HTMLButtonElement>('update-check').disabled = updatesState.busy;
   element<HTMLButtonElement>('update-close').disabled = updatesState.busy;
 }
 function openUpdates() {
   document.documentElement.dataset.update = 'true';
-  element('loading').dataset.off = 'true';
   element('update').hidden = false;
   busy(false);
   if (document.body.dataset.expanded === 'false') void action('expand').catch(fail);
@@ -452,7 +445,7 @@ stream.onerror = () => { recover(); };
 localize(navigator.language); void onboarding().catch(() => undefined).finally(() => { onboarded = true; void discover().catch(fail); });
 setInterval(() => { void discover().catch(() => undefined); }, 3000);
 document.documentElement.dataset.ready = 'true';
-addEventListener('beforeunload', () => { clearTimeout(loadingTimeout); stream.close(); });
+addEventListener('beforeunload', () => { loadingIndicator.dispose(); stream.close(); });
 
 addEventListener('keydown', event => { for (const id of ['tab-picker', 'conversation-actions']) if (event.key === 'Escape' && element<HTMLDetailsElement>(id).open) { element<HTMLDetailsElement>(id).open = false; element(id).querySelector<HTMLElement>('summary')?.focus(); } });
 addEventListener('pointerdown', event => { for (const id of ['tab-picker', 'conversation-actions']) if (!element(id).contains(event.target as Node)) element<HTMLDetailsElement>(id).open = false; });

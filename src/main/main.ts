@@ -1,7 +1,7 @@
 import { registerShellBridge } from './bridge';
 import { app, BrowserWindow, clipboard, globalShortcut, Menu, nativeTheme, Tray, nativeImage, screen, shell, systemPreferences } from 'electron';
 import { join, resolve } from 'node:path';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { startShell } from '../host/server';
 import { companion } from '../host/companion';
@@ -13,6 +13,8 @@ import { BackgroundHost, backgroundRuntime, prepareBackgroundRuntime } from '../
 import { CHECK_INTERVAL_MS, debInstallCommand, installPreparedUpdate } from './update';
 import { defaultShortcut, loadPreferences, normalizePreferences, resolveLanguage, savePreferences, loginCommand, setMacAutostart, setLinuxAutostart, type Preferences } from './preferences';
 import { APP_ICON, TRAY_ASSETS } from './tray';
+import { compactWindowBounds, expandedWindowBounds, fitWindowBounds, rememberWindowBounds, WINDOW_SIZE, type WindowPlacement } from './windowPlacement';
+import { loadWindowPlacement, saveWindowPlacement } from './windowPlacementStore';
 
 const smoke = process.argv.includes('--smoke-test');
 const integration = process.argv.includes('--integration-test');
@@ -22,7 +24,8 @@ let tray: Tray | undefined;
 let server: Awaited<ReturnType<typeof startShell>> | undefined;
 const pinned = true;
 let expanded = true;
-let expandedHeight = 640;
+let placement: WindowPlacement = {};
+let placementChange: Promise<void> | undefined;
 let glass = false;
 const abort = new AbortController();
 const runtime = companion(__dirname);
@@ -34,7 +37,6 @@ const live = () => window && !window.isDestroyed() ? window : undefined;
 const show = () => { const current = live(); if (!current) return; const wasHidden = !current.isVisible(); if (wasHidden && preferences?.splash) { void current.webContents.executeJavaScript('window.vibesSplash?.()').catch(() => undefined).finally(() => { if (!current.isDestroyed()) { current.show(); current.focus(); } }); return; } current.show(); current.focus(); };
 const toggle = () => { const current = live(); if (current?.isVisible() && current.isFocused()) current.hide(); else show(); };
 
-const MIN_WIDTH = 360;
 function animateBounds(target: BrowserWindow, to: Electron.Rectangle): Promise<void> {
   const from = target.getBounds();
   if (systemPreferences.getAnimationSettings?.().prefersReducedMotion) { target.setBounds(to); return Promise.resolve(); }
@@ -51,6 +53,11 @@ function animateBounds(target: BrowserWindow, to: Electron.Rectangle): Promise<v
   });
 }
 const preferencesFile = () => join(app.getPath('userData'), 'preferences.json');
+const placementFile = () => join(app.getPath('userData'), 'window-placement.json');
+function persistPlacement() {
+  try { saveWindowPlacement(placementFile(), placement); }
+  catch (error) { process.stderr.write(`Window placement could not be saved: ${error instanceof Error ? error.message : String(error)}\n`); }
+}
 let preferences: Preferences;
 function applyLaunchAtLogin(enabled: boolean) {
   const command = loginCommand(process.env.APPIMAGE ?? process.execPath, app.isPackaged ? undefined : app.getAppPath());
@@ -154,18 +161,21 @@ async function updatePreferences(update?: unknown) {
 async function run(action: string) {
   if (abort.signal.aborted) return;
   if (action === 'expand' && window) {
-    const bounds = window.getBounds();
-    if (expanded) expandedHeight = bounds.height;
+    if (placementChange) return placementChange;
+    const current = window;
+    const bounds = current.getBounds();
+    const requested = expanded ? compactWindowBounds(bounds, placement, screen.getDisplayMatching({ ...bounds, ...placement.compact }).workArea) : expandedWindowBounds(bounds, placement);
+    const target = fitWindowBounds(requested, screen.getDisplayMatching(requested).workArea);
+    placement = rememberWindowBounds(placement, bounds, expanded);
     expanded = !expanded;
-    window.setMinimumSize(360, expanded ? 360 : 44);
-    const marker = join(app.getPath('userData'), 'compact-placed');
-    const target = { ...bounds, height: expanded ? expandedHeight : 44 };
-    if (!expanded && !existsSync(marker)) {
-      const area = screen.getDisplayMatching(bounds).workArea;
-      Object.assign(target, { x: area.x + area.width - bounds.width - 12, y: area.y + 12 });
-      try { mkdirSync(app.getPath('userData'), { recursive: true }); writeFileSync(marker, ''); } catch { }
-    }
-    await animateBounds(window, target);
+    current.setMinimumSize(WINDOW_SIZE.minWidth, expanded ? WINDOW_SIZE.minHeight : WINDOW_SIZE.compactHeight);
+    placementChange = (async () => {
+      try {
+        await animateBounds(current, target);
+        if (!current.isDestroyed()) { placement = rememberWindowBounds(placement, current.getBounds(), expanded); persistPlacement(); }
+      } finally { placementChange = undefined; }
+    })();
+    await placementChange;
   }
   if (action === 'hide') { if (preferences.closeAction === 'quit') app.quit(); else window?.hide(); }
   if (action === 'startHost' && !smoke) {
@@ -197,10 +207,11 @@ else {
     server = await startShell(__dirname, { run, state: () => ({ pinned, expanded, glass, updates: updates.state() }), locale, preferences: updatePreferences, checkUpdates: () => updates.check(), installUpdate: product => updates.update(product), copyText: text => clipboard.writeText(text), shortcutRecording });
     void watchUpdates();
     const area = screen.getPrimaryDisplay().workArea;
-    const width = Math.min(MIN_WIDTH, area.width);
-    expandedHeight = Math.min(480, area.height - 40);
-    window = new BrowserWindow({ icon: resolve(__dirname, APP_ICON), width, height: expandedHeight, minWidth: MIN_WIDTH, minHeight: 360, maxWidth: 520, maximizable: false, fullscreenable: false,
-      x: area.x + Math.round((area.width - width) / 2), y: area.y + 20,
+    const width = Math.min(WINDOW_SIZE.minWidth, area.width);
+    placement = loadWindowPlacement(placementFile());
+    const requested = placement.expanded ?? { x: area.x + Math.round((area.width - width) / 2), y: area.y + 20, width, height: Math.min(WINDOW_SIZE.initialHeight, area.height - 40) };
+    const initial = fitWindowBounds(requested, screen.getDisplayMatching(requested).workArea);
+    window = new BrowserWindow({ icon: resolve(__dirname, APP_ICON), ...initial, minWidth: WINDOW_SIZE.minWidth, minHeight: WINDOW_SIZE.minHeight, maxWidth: WINDOW_SIZE.maxWidth, maximizable: false, fullscreenable: false,
       frame: false, alwaysOnTop: true, transparent: process.platform === 'darwin', visualEffectState: 'active', backgroundColor: '#1b1d21', show: false,
       webPreferences: { preload: resolve(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true },
     });
@@ -388,6 +399,8 @@ else {
 app.on('activate', show);
 app.on('before-quit', event => {
   quitting = true;
+  const current = live();
+  if (current && !placementChange) { placement = rememberWindowBounds(placement, current.getBounds(), expanded); persistPlacement(); }
   if (background && !hostStopped) {
     event.preventDefault(); abort.abort();
     stopping ??= (async () => {

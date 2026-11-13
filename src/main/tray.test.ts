@@ -33,7 +33,7 @@ it('uses a static gold gradient for the application while preserving the white t
   expect(readFileSync(new URL('../../build/icon.icns', import.meta.url)).subarray(0, 4).toString()).toBe('icns');
   expect(manifest.build.icon).toBe('build/icon.png');
   expect(manifest.build.mac.icon).toBe('build/icon.icns');
-  expect(manifest.build.win.icon).toBe('build/icon.png');
+  expect(manifest.build.win.icon).toBe('build/icon.ico');
   expect(manifest.build.linux.icon).toBe('build/icon.png');
   expect(manifest.build.files).toContain(`dist/${APP_ICON}`);
 });
@@ -48,11 +48,24 @@ it('packages the animated splash and uses gold branding independently of host me
   expect(html).toContain('id="brand-logo" src="logo.svg"');
 });
 
+it('keeps the gold gradients light at the top across static and animated branding', () => {
+  const palettes = [
+    ['#a86a13', '#d99c24', '#f5cc64', '#fff3bc'],
+    ['#a86a13', '#edb83e', '#fff3bc'],
+    ['#a86a13', '#dba32a', '#ffe69a'],
+  ];
+  for (const file of ['../../build/icon.svg', '../renderer/logo.svg', '../renderer/logo-animated.svg']) {
+    const svg = readFileSync(new URL(file, import.meta.url), 'utf8');
+    const gradients = [...svg.matchAll(/<linearGradient\b[^>]*>([\s\S]*?)<\/linearGradient>/g)];
+    expect(gradients.map(gradient => [...gradient[1].matchAll(/stop-color="([^"]+)"/g)].map(stop => stop[1]))).toEqual(palettes);
+  }
+});
+
 it('packages the gold gradient icon on all platforms', () => {
   expect(APP_ICON).toBe('icon.png');
   const manifest = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
   expect(manifest.build.mac.icon).toBe('build/icon.icns');
-  expect(manifest.build.win.icon).toBe('build/icon.png');
+  expect(manifest.build.win.icon).toBe('build/icon.ico');
   expect(manifest.build.linux.icon).toBe('build/icon.png');
   const icns = readFileSync(new URL('../../build/icon.icns', import.meta.url));
   expect(icns.subarray(0, 4).toString()).toBe('icns');
