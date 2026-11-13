@@ -331,8 +331,8 @@ else {
       const removedControls = await window.webContents.executeJavaScript(`!!document.querySelector('#new-chat,#pin')`);
       const singleTabDrag = await window.webContents.executeJavaScript(`document.querySelectorAll('.browser-tab').length===1&&document.querySelector('.browser-tab').draggable`);
       if (removedControls || singleTabDrag || !window.isAlwaysOnTop()) throw new Error('Header controls or permanent pinning failed');
-      const controls = await window.webContents.executeJavaScript(`({workspace:!!document.querySelector('#workspaces'),icons:[...document.querySelectorAll('#titlebar .window-actions button')].every(button=>button.querySelector('svg')&&button.getAttribute('aria-label')),overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth})`);
-      if (controls.workspace || !controls.icons || controls.overflow) throw new Error('Companion layout failed');
+      const controls = await window.webContents.executeJavaScript(`({workspace:!!document.querySelector('#workspaces'),icons:[...document.querySelectorAll('#titlebar .window-actions > button')].every(button=>button.querySelector('svg')&&button.getAttribute('aria-label')),menu:[...document.querySelectorAll('#conversation-actions .model-option')].every(button=>button.textContent.trim()&&button.dataset.text),overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth})`);
+      if (controls.workspace || !controls.icons || !controls.menu || controls.overflow) throw new Error(`Companion layout failed: ${JSON.stringify(controls)}`);
       process.stdout.write('PASS: Vibes automatically started its host and rendered the original chat with icon controls\n');
       app.quit(); return;
     }

@@ -109,6 +109,8 @@ function reset() {
   views.clear(); surfaces = []; revealedSelection = '';
   if (dragged) endDrag();
   element<HTMLButtonElement>('history').disabled = true;
+  element('conversation-actions').hidden = true;
+  element<HTMLDetailsElement>('conversation-actions').open = false;
   connected = false; selected = ''; busy(false);
   element('signin').hidden = true; element('history-panel').hidden = true; element('tab-strip').hidden = true;
 }
@@ -187,8 +189,10 @@ function activate(id: string) {
   selected = id; localStorage.setItem('vibes.surface', id);
   for (const [key, view] of views) { view.frame.hidden = key !== id; view.frame.id = key === id ? 'chat' : ''; }
   element('history-panel').hidden = true;
+  element<HTMLDetailsElement>('conversation-actions').open = false;
   const chat = surfaces.find(surface => surface.id === id)?.kind === 'ai';
   element<HTMLButtonElement>('history').disabled = !chat;
+  updateConversationActions();
   busy(!views.get(id)?.ready && ![...views.values()].some(view => view.ready)); renderTabs();
 }
 function loadSurface(id: string, focus = true) {
@@ -202,6 +206,12 @@ function loadSurface(id: string, focus = true) {
   views.get(id)!.ready = false;
   if (focus) activate(id);
   return send({ type: 'open', surface: id });
+}
+
+function updateConversationActions() {
+  const surface = surfaces.find(surface => surface.id === selected);
+  element('conversation-actions').hidden = !surface?.actions?.includes('scheduleQueue');
+  refreshScheduleQueue();
 }
 function icon(name: string) {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('aria-hidden', 'true');
@@ -320,6 +330,7 @@ function receive(event: Record<string, unknown>) {
   }
   if (event.type === 'hello') {
     surfaces = (event.surfaces as Surface[]).filter(surface => surface.tab !== false);
+    updateConversationActions();
     renderOptions((event.platforms ?? []) as { id: string; label: string; icon?: string }[]);
     element('tab-strip').hidden = activeHost?.signedIn === false;
     const initial = requested && surfaces.some(surface => surface.id === requested!.id) ? requested : { id: initialSurface(surfaces, selected || localStorage.getItem('vibes.surface'))?.id ?? '', preserveFocus: false };
@@ -376,9 +387,16 @@ addEventListener('message', event => {
   if (event.data.type === 'input') void send({ type: 'input', surface: id, message: event.data.message }).catch(fail);
   if (event.data.type === 'escape') void action('hide').catch(fail);
 });
-function bind(id: string, run: () => Promise<unknown>) {
+function bind(id: string, run: () => Promise<unknown>, disabled: () => boolean = () => false) {
   const button = element<HTMLButtonElement>(id);
-  button.onclick = async () => { button.disabled = true; try { await run(); } catch (error) { fail(error); } finally { button.disabled = false; } };
+  let running = false;
+  const refresh = () => { button.disabled = running || disabled(); };
+  button.onclick = async () => {
+    if (running || disabled()) return;
+    running = true; refresh();
+    try { await run(); } catch (error) { fail(error); } finally { running = false; refresh(); }
+  };
+  return refresh;
 }
 bind('expand', () => action('expand')); bind('hide', () => action('hide'));
 bind('retry', async () => { element('recover').hidden = true; hostRequested = false; connected = false; activeHost = undefined; busy(true); await discover(); });
@@ -410,10 +428,14 @@ function closeUpdates() {
 bind('update-close', async () => closeUpdates());
 bind('sign-in', async () => { await action('signIn'); await discover(); });
 bind('history', () => send({ type: 'history', surface: selected, all: true }));
+const refreshScheduleQueue = bind('schedule-queue', async () => {
+  element<HTMLDetailsElement>('conversation-actions').open = false;
+  await send({ type: 'action', surface: selected, action: 'scheduleQueue' });
+}, () => surfaces.find(surface => surface.id === selected)?.disabledActions?.includes('scheduleQueue') === true);
 bind('history-new', async () => { element('history-panel').hidden = true; await send({ type: 'newConversation', surface: selected }); });
 const closeHistory = () => { if (element('history-panel').hidden) return; element('history-panel').hidden = true; views.get(selected)?.frame.focus(); };
 addEventListener('pointerdown', event => { const target = event.target as Node; if (!element('history-panel').contains(target) && !element('history').contains(target)) closeHistory(); });
-addEventListener('blur', () => { if (document.activeElement?.tagName === 'IFRAME') { closeHistory(); element<HTMLDetailsElement>('tab-picker').open = false; } });
+addEventListener('blur', () => { if (document.activeElement?.tagName === 'IFRAME') { closeHistory(); element<HTMLDetailsElement>('tab-picker').open = false; element<HTMLDetailsElement>('conversation-actions').open = false; } });
 addEventListener('keydown', event => {
   if (element('update').hidden) { if (event.key === 'Escape') closeHistory(); return; }
   if (event.key === 'Escape') { event.preventDefault(); closeUpdates(); }
@@ -432,13 +454,17 @@ setInterval(() => { void discover().catch(() => undefined); }, 3000);
 document.documentElement.dataset.ready = 'true';
 addEventListener('beforeunload', () => { clearTimeout(loadingTimeout); stream.close(); });
 
-addEventListener('keydown', event => { if (event.key === 'Escape' && element<HTMLDetailsElement>('tab-picker').open) { element<HTMLDetailsElement>('tab-picker').open = false; element('tab-picker').querySelector<HTMLElement>('summary')?.focus(); } });
-addEventListener('pointerdown', event => { if (!element('tab-picker').contains(event.target as Node)) element<HTMLDetailsElement>('tab-picker').open = false; });
-function placePicker() {
-  const picker = element<HTMLDetailsElement>('tab-picker'); const panel = picker.querySelector<HTMLElement>('.picker-panel'); if (!picker.open || !panel) return;
+addEventListener('keydown', event => { for (const id of ['tab-picker', 'conversation-actions']) if (event.key === 'Escape' && element<HTMLDetailsElement>(id).open) { element<HTMLDetailsElement>(id).open = false; element(id).querySelector<HTMLElement>('summary')?.focus(); } });
+addEventListener('pointerdown', event => { for (const id of ['tab-picker', 'conversation-actions']) if (!element(id).contains(event.target as Node)) element<HTMLDetailsElement>(id).open = false; });
+function placePicker(id: string) {
+  const picker = element<HTMLDetailsElement>(id); const panel = picker.querySelector<HTMLElement>('.picker-panel'); if (!picker.open || !panel) return;
   const anchor = picker.querySelector('summary')!.getBoundingClientRect();
   panel.style.top = `${anchor.bottom + 4}px`; panel.style.visibility = 'visible';
   panel.style.left = `${Math.max(8, Math.min(anchor.left, innerWidth - panel.offsetWidth - 8))}px`;
 }
-element('tab-picker').querySelector('summary')!.addEventListener('click', () => requestAnimationFrame(placePicker)); element('tab-picker').addEventListener('toggle', placePicker); addEventListener('resize', placePicker);
+for (const id of ['tab-picker', 'conversation-actions']) {
+  element(id).querySelector('summary')!.addEventListener('click', () => requestAnimationFrame(() => placePicker(id)));
+  element(id).addEventListener('toggle', () => placePicker(id));
+  addEventListener('resize', () => placePicker(id));
+}
 Object.assign(window, { vibesSplash: () => { const node = element('loading'); if (node.dataset.off !== 'true') return; const logo = element<HTMLImageElement>('loading-logo'); logo.src = `logo-animated.svg?${Date.now()}`; node.dataset.off = 'false'; setTimeout(() => { if (views.get(selected)?.ready) node.dataset.off = 'true'; }, 1000); }, vibesCloseActiveTab: () => { if (selected) void closeTab(selected).catch(fail); } });

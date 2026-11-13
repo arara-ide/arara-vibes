@@ -11,7 +11,7 @@ app.setPath('userData', process.argv[3]);
 void app.whenReady().then(async () => {
   const inputs: Record<string, unknown>[] = [];
   const listeners = new Set<ServerResponse>();
-  const surfaces = [{ id: 'first', label: 'Codex', kind: 'ai', tab: true }];
+  const surfaces = [{ id: 'first', label: 'Codex', kind: 'ai', tab: true, actions: ['scheduleQueue'], disabledActions: ['scheduleQueue'] }];
   const emit = (message: unknown) => { for (const listener of listeners) listener.write(`data: ${JSON.stringify(message)}\n\n`); };
   const hello = () => ({ type: 'hello', surfaces, platforms: [{ id: 'codex', label: 'Codex' }] });
   const token = 'a'.repeat(64);
@@ -29,7 +29,7 @@ void app.whenReady().then(async () => {
       emit({ type: 'document', surface: input.surface, epoch: 1, html });
     }
     if (input.type === 'history') emit({ type: 'history', conversations: [] });
-    if (input.type === 'createTab') { surfaces.push({ id: 'second', label: 'Codex', kind: 'ai', tab: true }); emit(hello()); emit({ type: 'openSurface', surface: 'second' }); }
+    if (input.type === 'createTab') { surfaces.push({ id: 'second', label: 'Codex', kind: 'ai', tab: true, actions: [], disabledActions: [] }); emit(hello()); emit({ type: 'openSurface', surface: 'second' }); }
     response.writeHead(204).end();
   });
   await new Promise<void>(resolve => host.listen(0, '127.0.0.1', resolve));
@@ -60,6 +60,16 @@ void app.whenReady().then(async () => {
     await until(async () => window.webContents.mainFrame.frames.length > 0 && await window.webContents.mainFrame.frames[0].executeJavaScript("typeof document.getElementById('send')?.onclick === 'function'").catch(() => false));
     const frame = window.webContents.mainFrame.frames[0];
     assert.equal(await frame.executeJavaScript("typeof window.araraVibes"), 'undefined');
+    await until(async () => !await evaluate("document.getElementById('conversation-actions').hidden"));
+    assert.equal(await evaluate("document.getElementById('schedule-queue').disabled"), true);
+    await evaluate("document.querySelector('#conversation-actions summary').click(); document.getElementById('schedule-queue').click()");
+    assert.equal(inputs.some(input => input.type === 'action' && input.action === 'scheduleQueue'), false);
+    surfaces[0].disabledActions = [];
+    emit(hello());
+    await until(async () => !await evaluate("document.getElementById('schedule-queue').disabled"));
+    await evaluate("document.getElementById('schedule-queue').click()");
+    await until(() => inputs.some(input => input.type === 'action' && input.action === 'scheduleQueue' && input.surface === 'first'));
+    assert.equal(await evaluate("document.getElementById('conversation-actions').open"), false);
     blockActions = true;
     assert.equal(await evaluate("fetch('action',{method:'POST'}).then(()=>false,()=>true)"), true);
     assert.equal(blocked, 1);
@@ -69,8 +79,11 @@ void app.whenReady().then(async () => {
     await until(() => inputs.some(input => input.type === 'input' && (input.message as { type: string; action?: string }).type === 'cliSetupAction' && (input.message as { action?: string }).action === 'update'));
     await evaluate("document.getElementById('history-new').click()");
     await until(() => inputs.some(input => input.type === 'newConversation'));
+    await evaluate("document.querySelector('#conversation-actions summary').click()");
     await evaluate("document.querySelector('[data-platform=codex]').click()");
     await until(() => inputs.some(input => input.type === 'open' && input.surface === 'second'));
+    assert.equal(await evaluate("document.getElementById('conversation-actions').hidden"), true);
+    assert.equal(await evaluate("document.getElementById('conversation-actions').open"), false);
     assert.equal(inputs.filter(input => input.type === 'input' && (input.message as { type: string }).type === 'send').length, 1);
     assert.equal(inputs.filter(input => input.type === 'input' && (input.message as { type: string }).type === 'cliSetupAction').length, 1);
     assert.equal(inputs.filter(input => input.type === 'newConversation').length, 1);

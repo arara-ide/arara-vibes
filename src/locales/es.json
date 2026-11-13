@@ -82,5 +82,7 @@
   "Close Arara Code and uninstall the old UserSetup installation while keeping your data. Then try the update again.": "Cierra Arara Code y desinstala la instalación antigua UserSetup conservando tus datos. Después vuelve a intentar la actualización.",
   "Copy command": "Copiar comando",
   "Copied": "Copiado",
-  "Run this command in a terminal to install, then reopen the app.": "Ejecuta este comando en una terminal para instalar y luego vuelve a abrir la app."
+  "Run this command in a terminal to install, then reopen the app.": "Ejecuta este comando en una terminal para instalar y luego vuelve a abrir la app.",
+  "Send when limits reset": "Enviar al renovar el límite",
+  "Conversation actions": "Acciones de la conversación"
 }
