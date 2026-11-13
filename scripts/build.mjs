@@ -16,5 +16,5 @@ for (const file of ['index.html', 'shell.css', 'tokens.css', 'logo.svg', 'logo-w
 cpSync(resolve(root, 'assets/icons.svg'), resolve(root, 'dist/icons.svg'));
 cpSync(resolve(root, 'assets/codicons-LICENSE'), resolve(root, 'dist/codicons-LICENSE'));
 for (const file of ['tray-white.png', 'tray-white@2x.png']) cpSync(resolve(root, 'assets', file), resolve(root, 'dist', file));
-for (const icon of ['icon.png', 'icon-mac.png']) cpSync(resolve(root, 'build', icon), resolve(root, 'dist', icon));
+cpSync(resolve(root, 'build/icon.png'), resolve(root, 'dist/icon.png'));
 process.stdout.write('Build completed: public shell and companion downloader; no Arara AI assets bundled.\n');

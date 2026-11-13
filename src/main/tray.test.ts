@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { expect, it } from 'vitest';
-import { APP_ICON, applicationIcon, TRAY_ASSETS } from './tray';
+import { APP_ICON, TRAY_ASSETS } from './tray';
 
 it('uses the same monochrome gradient in normal and high resolution on every operating system', () => {
   expect(TRAY_ASSETS).toEqual({ image: 'tray-white.png', retina: 'tray-white@2x.png' });
@@ -32,7 +32,7 @@ it('uses a static gold gradient for the application while preserving the white t
   expect(png.readUInt32BE(16)).toBe(1024); expect(png.readUInt32BE(20)).toBe(1024);
   expect(readFileSync(new URL('../../build/icon.icns', import.meta.url)).subarray(0, 4).toString()).toBe('icns');
   expect(manifest.build.icon).toBe('build/icon.png');
-  expect(manifest.build.mac.icon).toBe('build/icon-mac.icns');
+  expect(manifest.build.mac.icon).toBe('build/icon.icns');
   expect(manifest.build.win.icon).toBe('build/icon.png');
   expect(manifest.build.linux.icon).toBe('build/icon.png');
   expect(manifest.build.files).toContain(`dist/${APP_ICON}`);
@@ -48,18 +48,17 @@ it('packages the animated splash and uses gold branding independently of host me
   expect(html).toContain('id="brand-logo" src="logo.svg"');
 });
 
-it('packages the white gradient bird in the macOS application icon', () => {
-  expect(applicationIcon('darwin')).toBe('icon-mac.png');
-  expect(applicationIcon('linux')).toBe('icon.png');
-  expect(applicationIcon('win32')).toBe('icon.png');
-  const svg = readFileSync(new URL('../../build/icon-mac.svg', import.meta.url), 'utf8');
-  expect(svg).toBe(readFileSync(new URL('../../assets/tray-white.svg', import.meta.url), 'utf8'));
-  expect(svg).toContain('#ffffff'); expect(svg).toContain('#b8b8b8');
-  const icns = readFileSync(new URL('../../build/icon-mac.icns', import.meta.url));
+it('packages the gold gradient icon on all platforms', () => {
+  expect(APP_ICON).toBe('icon.png');
+  const manifest = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
+  expect(manifest.build.mac.icon).toBe('build/icon.icns');
+  expect(manifest.build.win.icon).toBe('build/icon.png');
+  expect(manifest.build.linux.icon).toBe('build/icon.png');
+  const icns = readFileSync(new URL('../../build/icon.icns', import.meta.url));
   expect(icns.subarray(0, 4).toString()).toBe('icns');
   expect(icns.readUInt32BE(4)).toBe(icns.length);
   expect(icns.readUInt32BE(12)).toBeGreaterThan(8);
-  const png = readFileSync(new URL('../../build/icon-mac.png', import.meta.url));
+  const png = readFileSync(new URL('../../build/icon.png', import.meta.url));
   expect(png.subarray(1, 4).toString()).toBe('PNG');
   expect(png.readUInt32BE(16)).toBe(1024);
 });

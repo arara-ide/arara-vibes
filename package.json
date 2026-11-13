@@ -50,7 +50,6 @@
       "dist/tray-white.png",
       "dist/tray-white@2x.png",
       "dist/icon.png",
-      "dist/icon-mac.png",
       "package.json",
       "dist/icons.svg",
       "dist/codicons-LICENSE"
@@ -62,7 +61,7 @@
       ],
       "category": "public.app-category.developer-tools",
       "sign": "scripts/sign-macos.cjs",
-      "icon": "build/icon-mac.icns"
+      "icon": "build/icon.icns"
     },
     "win": {
       "target": [
