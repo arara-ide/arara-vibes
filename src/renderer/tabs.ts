@@ -1,4 +1,4 @@
-export interface Surface { id: string; label: string; kind?: string; family?: string; conversationTitle?: string; tab?: boolean; running?: boolean; actions?: string[] }
+export interface Surface { id: string; label: string; kind?: string; family?: string; conversationTitle?: string; tab?: boolean; running?: boolean; actions?: string[]; disabledActions?: string[] }
 export const tabLabel = (surface: Surface) => surface.label;
 export function initialSurface(surfaces: Surface[], saved: string | null) {
   return surfaces.find(surface => surface.id === saved) ?? surfaces[0];

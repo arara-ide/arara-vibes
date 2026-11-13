@@ -192,7 +192,7 @@ function activate(id: string) {
   element<HTMLDetailsElement>('conversation-actions').open = false;
   const chat = surfaces.find(surface => surface.id === id)?.kind === 'ai';
   element<HTMLButtonElement>('history').disabled = !chat;
-  element('conversation-actions').hidden = !surfaces.find(surface => surface.id === id)?.actions?.includes('scheduleQueue');
+  updateConversationActions();
   busy(!views.get(id)?.ready && ![...views.values()].some(view => view.ready)); renderTabs();
 }
 function loadSurface(id: string, focus = true) {
@@ -206,6 +206,12 @@ function loadSurface(id: string, focus = true) {
   views.get(id)!.ready = false;
   if (focus) activate(id);
   return send({ type: 'open', surface: id });
+}
+
+function updateConversationActions() {
+  const surface = surfaces.find(surface => surface.id === selected);
+  element('conversation-actions').hidden = !surface?.actions?.includes('scheduleQueue');
+  refreshScheduleQueue();
 }
 function icon(name: string) {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('aria-hidden', 'true');
@@ -324,7 +330,7 @@ function receive(event: Record<string, unknown>) {
   }
   if (event.type === 'hello') {
     surfaces = (event.surfaces as Surface[]).filter(surface => surface.tab !== false);
-    element('conversation-actions').hidden = !surfaces.find(surface => surface.id === selected)?.actions?.includes('scheduleQueue');
+    updateConversationActions();
     renderOptions((event.platforms ?? []) as { id: string; label: string; icon?: string }[]);
     element('tab-strip').hidden = activeHost?.signedIn === false;
     const initial = requested && surfaces.some(surface => surface.id === requested!.id) ? requested : { id: initialSurface(surfaces, selected || localStorage.getItem('vibes.surface'))?.id ?? '', preserveFocus: false };
@@ -381,9 +387,16 @@ addEventListener('message', event => {
   if (event.data.type === 'input') void send({ type: 'input', surface: id, message: event.data.message }).catch(fail);
   if (event.data.type === 'escape') void action('hide').catch(fail);
 });
-function bind(id: string, run: () => Promise<unknown>) {
+function bind(id: string, run: () => Promise<unknown>, disabled: () => boolean = () => false) {
   const button = element<HTMLButtonElement>(id);
-  button.onclick = async () => { button.disabled = true; try { await run(); } catch (error) { fail(error); } finally { button.disabled = false; } };
+  let running = false;
+  const refresh = () => { button.disabled = running || disabled(); };
+  button.onclick = async () => {
+    if (running || disabled()) return;
+    running = true; refresh();
+    try { await run(); } catch (error) { fail(error); } finally { running = false; refresh(); }
+  };
+  return refresh;
 }
 bind('expand', () => action('expand')); bind('hide', () => action('hide'));
 bind('retry', async () => { element('recover').hidden = true; hostRequested = false; connected = false; activeHost = undefined; busy(true); await discover(); });
@@ -415,10 +428,10 @@ function closeUpdates() {
 bind('update-close', async () => closeUpdates());
 bind('sign-in', async () => { await action('signIn'); await discover(); });
 bind('history', () => send({ type: 'history', surface: selected, all: true }));
-bind('schedule-queue', async () => {
+const refreshScheduleQueue = bind('schedule-queue', async () => {
   element<HTMLDetailsElement>('conversation-actions').open = false;
   await send({ type: 'action', surface: selected, action: 'scheduleQueue' });
-});
+}, () => surfaces.find(surface => surface.id === selected)?.disabledActions?.includes('scheduleQueue') === true);
 bind('history-new', async () => { element('history-panel').hidden = true; await send({ type: 'newConversation', surface: selected }); });
 const closeHistory = () => { if (element('history-panel').hidden) return; element('history-panel').hidden = true; views.get(selected)?.frame.focus(); };
 addEventListener('pointerdown', event => { const target = event.target as Node; if (!element('history-panel').contains(target) && !element('history').contains(target)) closeHistory(); });
