@@ -124,7 +124,7 @@ html[data-mac="true"] .glass-menu { background: rgb(0 0 0 / 70%); }
 #tab-strip, .window-actions, .surface-frame, #feedback { transition: opacity var(--dur-base) var(--ease-out) var(--dur-base); }
 html:has(#loading:not([data-off="true"])) :is(#tab-strip, .window-actions, .surface-frame, #feedback) { opacity: 0; transition: none; }
 .browser-tab, .browser-tab[data-active="true"] { gap: 6px; }
-body[data-expanded="false"] #tab-strip { opacity: 0; pointer-events: none; transition: opacity var(--dur-base) var(--ease-out); }
+body[data-expanded="false"] #tab-strip { opacity: 0; pointer-events: none; visibility: hidden; transition: opacity var(--dur-base) var(--ease-out); }
 body[data-expanded="true"] #tab-strip { transition: opacity var(--dur-base) var(--ease-out); }
 html:has(#loading:not([data-off="true"])) :is(#signin, #onboarding, #recover, #update) { opacity: 0; transition: none; }
 #signin, #onboarding, #recover, #update { transition: opacity var(--dur-base) var(--ease-out) var(--dur-base); }
@@ -135,7 +135,7 @@ html:has(#loading:not([data-off="true"])) #update { visibility: hidden; }
 html[data-update="true"] :is(#tab-strip, .window-actions, .surface-frame, #feedback, #signin, #onboarding, #history-panel) { opacity: 0; pointer-events: none; transition: opacity var(--dur-base) var(--ease-out); }
 html[data-glass="true"] #update { background: transparent; }
 .browser-tab:has(.tab-close[hidden]) { padding-right: var(--space-3); }
-#brand-logo { transition: opacity var(--dur-base) var(--ease-out) var(--dur-base); }
+#brand-logo { pointer-events: none; -webkit-user-drag: none; transition: opacity var(--dur-base) var(--ease-out) var(--dur-base); }
 html:has(#loading:not([data-off="true"])) #brand-logo { opacity: 0; transition: none; }
 #titlebar .brand, #tab-strip { -webkit-app-region: drag; }
 #tabs, #tab-picker, .browser-tab, .tab-close, .picker-panel { -webkit-app-region: no-drag; }

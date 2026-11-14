@@ -38,6 +38,12 @@ void app.whenReady().then(async () => {
     await evaluate("document.getElementById('recover').hidden=false; const frame=document.createElement('iframe');frame.className='surface-frame';frame.id='recovery-fixture';document.getElementById('stage').prepend(frame)");
     await until("(()=>{const panel=document.getElementById('recover').getBoundingClientRect();const stage=document.getElementById('stage').getBoundingClientRect();return getComputedStyle(document.getElementById('recover')).position==='absolute'&&panel.left===stage.left&&panel.right===stage.right&&panel.top===stage.top&&panel.bottom===stage.bottom})()");
     await evaluate("document.getElementById('recover').hidden=true;document.getElementById('recovery-fixture').remove()");
+    assert.equal(await evaluate("getComputedStyle(document.getElementById('brand-logo')).pointerEvents"), 'none');
+    for (const expanded of [true, false]) {
+      await evaluate(`document.body.dataset.expanded='${expanded}';document.getElementById('tab-strip').hidden=false`);
+      assert.equal(await evaluate("getComputedStyle(document.querySelector('#titlebar .brand')).webkitAppRegion"), 'drag');
+      if (!expanded) assert.equal(await evaluate("getComputedStyle(document.getElementById('tab-strip')).visibility"), 'hidden');
+    }
     process.stdout.write('PASS: shell branding loads; failed startup registration shows an error and keeps onboarding open until a successful retry\n');
   } finally { window.destroy(); server.close(); }
   app.quit();

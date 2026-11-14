@@ -93,3 +93,30 @@ it('keeps ready status with command when Linux .deb returns a manual install com
   await h.updates.update('arara-vibes');
   expect(h.updates.state().products[1]).toMatchObject({ status: 'ready', command: "sudo apt install '/cache/vibes.deb'" });
 });
+
+it('hands Windows updates to the Store without downloading, stopping the host or claiming installation', async () => {
+  const h = harness();
+  h.deps.current.mockImplementation(async product => ({ version: h.versions[product], store: true }));
+  const openStore = vi.fn(async () => undefined);
+  const updates = new Updates({ ...h.deps, openStore });
+  await updates.update();
+  expect(openStore.mock.calls).toEqual([['arara-code'], ['arara-vibes']]);
+  expect(h.deps.download).not.toHaveBeenCalled(); expect(h.deps.install).not.toHaveBeenCalled();
+  expect(updates.state().products.map(item => item.status)).toEqual(['store', 'store']);
+  openStore.mockRejectedValueOnce(Error('Store unavailable'));
+  await updates.update('arara-code');
+  expect(updates.state().products[0]).toMatchObject({ status: 'error', error: 'install' });
+  expect(updates.state().busy).toBe(false);
+});
+
+it('keeps the Store available when its public version catalog is temporarily unavailable', async () => {
+  const h = harness();
+  h.deps.current.mockImplementation(async product => ({ version: h.versions[product], store: true }));
+  h.deps.latest.mockRejectedValue(Error('Catalog unavailable'));
+  const openStore = vi.fn(async () => undefined);
+  const updates = new Updates({ ...h.deps, openStore });
+  await updates.update('arara-code');
+  expect(openStore).toHaveBeenCalledExactlyOnceWith('arara-code');
+  expect(h.deps.download).not.toHaveBeenCalled(); expect(h.deps.install).not.toHaveBeenCalled();
+  expect(updates.state().products[0].status).toBe('store');
+});

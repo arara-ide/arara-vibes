@@ -2,12 +2,13 @@ import { newerVersion, isCurrentVersion, validVersion } from './update';
 
 export const UPDATE_PRODUCTS = ['arara-code', 'arara-vibes'] as const;
 export type UpdateProduct = typeof UPDATE_PRODUCTS[number];
-export type UpdateStatus = 'checking' | 'current' | 'available' | 'downloading' | 'ready' | 'installing' | 'restarting' | 'error' | 'development';
+export type UpdateStatus = 'checking' | 'current' | 'available' | 'store' | 'downloading' | 'ready' | 'installing' | 'restarting' | 'error' | 'development';
 export class UpdateFailure extends Error { constructor(readonly reason: 'migration') { super(reason); } }
-export interface ProductUpdate { product: UpdateProduct; current?: string; latest?: string; status: UpdateStatus; error?: 'check' | 'install' | 'migration'; command?: string }
+export interface ProductUpdate { product: UpdateProduct; current?: string; latest?: string; store?: boolean; status: UpdateStatus; error?: 'check' | 'install' | 'migration'; command?: string }
 export interface UpdatesState { products: ProductUpdate[]; busy: boolean }
 interface UpdateDependencies {
-  current(product: UpdateProduct): Promise<{ version?: string; development?: boolean }>;
+  current(product: UpdateProduct): Promise<{ version?: string; development?: boolean; store?: boolean }>;
+  openStore?(product: UpdateProduct): Promise<void>;
   latest(product: UpdateProduct): Promise<string>;
   download(product: UpdateProduct, version: string): Promise<string>;
   install(product: UpdateProduct, file: string, version: string): Promise<string | void>;
@@ -29,6 +30,7 @@ export class Updates {
     this.set(product, { status: 'checking', error: undefined, command: undefined });
     try {
       const current = await this.deps.current(product);
+      this.set(product, { store: current.store });
       if (current.development) { this.set(product, { current: current.version, latest: undefined, status: 'development', command: undefined }); return; }
       const latest = await this.deps.latest(product);
       if (!validVersion(latest) || (current.version && !validVersion(current.version))) throw new Error('Invalid update version');
@@ -49,6 +51,14 @@ export class Updates {
       const files = new Map<UpdateProduct, string>();
       for (const name of selected) {
         const item = this.products.find(entry => entry.product === name)!;
+        if (item.store && (item.status === 'available' || item.status === 'error')) {
+          try {
+            if (!this.deps.openStore) throw new Error('Microsoft Store unavailable');
+            await this.deps.openStore(name);
+            this.set(name, { status: 'store', error: undefined });
+          } catch { this.set(name, { status: 'error', error: 'install' }); return; }
+          continue;
+        }
         if (item.status === 'error') return;
         if (item.status !== 'available' || !item.latest) continue;
         this.set(name, { status: 'downloading', command: undefined });

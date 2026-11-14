@@ -29,7 +29,8 @@
     "package:linux": "node scripts/package.mjs --linux",
     "preview": "node dist/preview.mjs",
     "build:icons": "node scripts/build-icons.cjs",
-    "test:icons": "node scripts/test-icons.cjs"
+    "test:icons": "node scripts/test-icons.cjs",
+    "test:store:windows": "node scripts/test-windows-store.mjs"
   },
   "build": {
     "appId": "br.app.code.arara.vibes",
