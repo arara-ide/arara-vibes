@@ -1,5 +1,6 @@
 export const RELEASES_URL = 'https://api.github.com/repos/arara-ide/arara-vibes/releases?per_page=30';
-export const CHECK_INTERVAL_MS = 5 * 60_000;
+export const CHECK_INTERVAL_MS = 20 * 60_000;
+export const updateCheckInterval = (platform = process.platform) => platform === 'win32' ? 60 * 60_000 : CHECK_INTERVAL_MS;
 const pattern = /^v?(\d+)\.(\d+)\.(\d+)$/;
 
 export function newerVersion(candidate: string, current: string) {

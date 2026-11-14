@@ -6,7 +6,7 @@ import { join, resolve } from 'node:path';
 import { stageProductionExtension } from '../../scripts/launch.mjs';
 import { createInterface } from 'node:readline';
 
-export interface BackgroundOptions { executable: string; args?: string[]; editorArgs?: string[]; root?: string; profile?: string; extension?: string; hosts?: string; development?: boolean; sessionFile?: string; noSandbox?: boolean; locale?: string }
+export interface BackgroundOptions { executable: string; editorExecutable?: string; args?: string[]; editorArgs?: string[]; root?: string; profile?: string; extension?: string; hosts?: string; development?: boolean; sessionFile?: string; noSandbox?: boolean; locale?: string }
 export function codeEnvironment(source: NodeJS.ProcessEnv, development = false, background = false) {
   const env = { ...source };
   for (const key of Object.keys(env)) if (key.startsWith('VSCODE_') || !background && key.startsWith('ARARA_VIBES_') || ['ELECTRON_RUN_AS_NODE', 'NODE_OPTIONS'].includes(key)) delete env[key];
@@ -75,15 +75,19 @@ export class BackgroundHost {
   private child?: ChildProcess;
   private starting?: Promise<void>;
   private opening?: Promise<void>;
-  constructor(private readonly options: BackgroundOptions) {}
+  constructor(private readonly options: BackgroundOptions, private readonly report: (output: string) => void = () => {}) {}
   start(): Promise<void> {
     if (this.starting) return this.starting;
     if (this.child && this.child.exitCode === null && this.child.signalCode === null) return Promise.resolve();
     this.starting = new Promise<void>((resolve, reject) => {
       const env = codeEnvironment(process.env, this.options.development, true);
-      const child = spawn(this.options.executable, backgroundArguments(this.options), { env, detached: true, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true });
+      const child = spawn(this.options.executable, backgroundArguments(this.options), { env, detached: true, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
       const output = createInterface({ input: child.stdout! });
-      output.on('line', line => { if (this.child === child && line === 'background-window:activate') void this.openEditor().catch(error => process.stderr.write(`Editor launch failed: ${String(error)}\n`)); });
+      output.on('line', line => {
+        if (this.child === child && line === 'background-window:activate') void this.openEditor().catch(error => process.stderr.write(`Editor launch failed: ${String(error)}\n`));
+        else this.report(`${line}\n`);
+      });
+      child.stderr!.on('data', data => this.report(String(data)));
       child.once('close', () => output.close());
       this.child = child;
       child.once('error', error => { if (this.child === child) this.child = undefined; reject(error); });
@@ -96,7 +100,7 @@ export class BackgroundHost {
     if (this.opening) return this.opening;
     this.opening = new Promise<void>((resolve, reject) => {
       const env = codeEnvironment(process.env, this.options.development);
-      const child = spawn(this.options.executable, [...(this.options.editorArgs ?? this.options.args ?? []), '--new-window', ...(this.options.noSandbox ? ['--no-sandbox'] : [])], { env, detached: true, stdio: 'ignore' });
+      const child = spawn(this.options.editorExecutable ?? this.options.executable, [...(this.options.editorArgs ?? this.options.args ?? []), '--new-window', ...(this.options.noSandbox ? ['--no-sandbox'] : [])], { env, detached: true, stdio: 'ignore' });
       child.once('error', reject);
       child.once('spawn', () => { child.unref(); resolve(); });
     }).finally(() => { this.opening = undefined; });

@@ -1,7 +1,7 @@
 import { requestAction } from './action';
 import type { ShellBridge } from '../transport';
 import type { UpdatesState } from '../main/updates';
-import { renderUpdates } from './updates';
+import { renderUpdates, updatesCurrent } from './updates';
 import { Loading } from './loading';
 import { t, setLocale } from '../i18n';
 import { chatDocument } from './document';
@@ -304,6 +304,10 @@ function receive(event: Record<string, unknown>) {
   if (event.type === 'shell' && typeof event.locale === 'string' && !activeHost) localize(event.locale);
   if ((event.type === 'shell' || event.type === 'updates') && event.updates) {
     updatesState = event.updates as UpdatesState;
+    if (closeAfterUpdateCheck && !updatesState.busy) {
+      closeAfterUpdateCheck = false;
+      if (updatesCurrent(updatesState)) closeUpdates();
+    }
     if (!updatesDismissed && updatesState.products.some(item => item.status === 'available')) openUpdates();
     drawUpdates();
     if (event.type === 'updates') return;
@@ -397,9 +401,10 @@ bind('retry', async () => { element('recover').hidden = true; hostRequested = fa
 bind('sign-in-copy', async () => { await action('copySignInLink'); feedback(t('Sign-in link copied. Paste it in your browser.')); });
 let updatesState: UpdatesState = { products: [], busy: false };
 let updatesDismissed = false;
+let closeAfterUpdateCheck = false;
 function drawUpdates() {
   renderUpdates(element('update-products'), updatesState, async product => { await action('installUpdate', { product }); }, text => action('copyText', { text }));
-  element('update-text').textContent = t('Finish ongoing tasks before updating.');
+  element('update-close').textContent = t(updatesCurrent(updatesState) ? 'Continue' : 'Later');
   element<HTMLButtonElement>('update-install').disabled = updatesState.busy || !updatesState.products.some(item => item.status === 'available');
   element<HTMLButtonElement>('update-check').disabled = updatesState.busy;
   element<HTMLButtonElement>('update-close').disabled = updatesState.busy;
@@ -413,7 +418,11 @@ function openUpdates() {
 }
 bind('updates-open', async () => { openUpdates(); await action('checkUpdates'); });
 bind('update-install', async () => { await action('installUpdate'); });
-bind('update-check', async () => { await action('checkUpdates'); });
+bind('update-check', async () => {
+  closeAfterUpdateCheck = true;
+  try { await action('checkUpdates'); if (updatesCurrent(updatesState)) closeUpdates(); }
+  catch (error) { closeAfterUpdateCheck = false; throw error; }
+});
 function closeUpdates() {
   if (updatesState.busy) return;
   updatesDismissed = true; delete document.documentElement.dataset.update; element('update').hidden = true; element('updates-open').focus();

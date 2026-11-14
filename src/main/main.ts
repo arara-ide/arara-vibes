@@ -10,7 +10,8 @@ import { Updates, UpdateFailure, type UpdateProduct } from './updates';
 import { updateCode } from './codeUpdate';
 import { codeInstallation } from '../host/installation';
 import { BackgroundHost, backgroundRuntime, prepareBackgroundRuntime } from '../host/background';
-import { CHECK_INTERVAL_MS, debInstallCommand, installPreparedUpdate } from './update';
+import { prepareMacBackgroundRuntime } from '../host/macBackground';
+import { updateCheckInterval, debInstallCommand, installPreparedUpdate } from './update';
 import { defaultShortcut, loadPreferences, normalizePreferences, resolveLanguage, savePreferences, loginCommand, setMacAutostart, setLinuxAutostart, type Preferences } from './preferences';
 import { APP_ICON, TRAY_ASSETS } from './tray';
 import { compactWindowBounds, expandedWindowBounds, fitWindowBounds, rememberWindowBounds, WINDOW_SIZE, type WindowPlacement } from './windowPlacement';
@@ -30,6 +31,7 @@ let glass = false;
 const abort = new AbortController();
 const runtime = companion(__dirname);
 let background: BackgroundHost | undefined;
+let startingBackground: Promise<void> | undefined;
 let quitting = false;
 let hostStopped = false;
 let stopping: Promise<void> | undefined;
@@ -146,7 +148,7 @@ function createUpdates() {
 }
 function watchUpdates() {
   if (!app.isPackaged || process.env.ARARA_VIBES_DISABLE_UPDATES === '1') return;
-  void updates.check(); setInterval(() => void updates.check(), CHECK_INTERVAL_MS).unref();
+  void updates.check(); setInterval(() => void updates.check(), updateCheckInterval()).unref();
 }
 async function updatePreferences(update?: unknown) {
   if (update === undefined) return { ...preferences, defaultShortcut: defaultShortcut() };
@@ -180,18 +182,27 @@ async function run(action: string) {
   }
   if (action === 'hide') { if (preferences.closeAction === 'quit') app.quit(); else window?.hide(); }
   if (action === 'startHost' && !smoke) {
-    if (codeUpdating) return;
-    if (background) { await server?.shutdown(); await background.stop(); }
-    if (!background) {
-      const options = backgroundRuntime(__dirname, runtime.installedCompanion('arara-code'), app.commandLine.hasSwitch('no-sandbox'), resolveLanguage(preferences.language, app.getLocale()));
-      if (!options && process.env.ARARA_DISABLE_COMPANION_DOWNLOAD !== '1') {
-        server?.emit({ type: 'openUpdates' });
-        void updates.check();
+    if (integration) process.stdout.write(`Background startup: ${JSON.stringify({ aborted: abort.signal.aborted, codeUpdating, pending: !!startingBackground, existing: !!background })}\n`);
+    if (startingBackground) return startingBackground;
+    startingBackground = (async () => {
+      if (codeUpdating || abort.signal.aborted) return;
+      if (background) { await server?.shutdown(); await background.stop(); }
+      if (!background) {
+        const options = backgroundRuntime(__dirname, runtime.installedCompanion('arara-code'), app.commandLine.hasSwitch('no-sandbox'), resolveLanguage(preferences.language, app.getLocale()));
+        if (!options && process.env.ARARA_DISABLE_COMPANION_DOWNLOAD !== '1') {
+          server?.emit({ type: 'openUpdates' });
+          void updates.check();
+        }
+        if (!options) throw new Error(t('Open Updates to install or update Arara Code and start the chat.'));
+        const prepared = await prepareBackgroundRuntime(options);
+        const isolated = await prepareMacBackgroundRuntime(prepared, join(app.getPath('userData'), 'runtime/mac-host'));
+        if (integration) process.stdout.write(`Background runtime prepared: ${isolated.executable}\n`);
+        if (abort.signal.aborted || codeUpdating) return;
+        background = new BackgroundHost(isolated, integration ? output => process.stdout.write(output) : undefined);
       }
-      if (!options) throw new Error(t('Open Updates to install or update Arara Code and start the chat.'));
-      background = new BackgroundHost(await prepareBackgroundRuntime(options));
-    }
-    await background.start();
+      if (!abort.signal.aborted && !codeUpdating) await background.start();
+    })().finally(() => { startingBackground = undefined; });
+    return startingBackground;
   }
 }
 
@@ -213,7 +224,7 @@ else {
     const requested = placement.expanded ?? { x: area.x + Math.round((area.width - width) / 2), y: area.y + 20, width, height: Math.min(WINDOW_SIZE.initialHeight, area.height - 40) };
     const initial = fitWindowBounds(requested, screen.getDisplayMatching(requested).workArea);
     window = new BrowserWindow({ icon: resolve(__dirname, APP_ICON), ...initial, minWidth: WINDOW_SIZE.minWidth, minHeight: WINDOW_SIZE.minHeight, maxWidth: WINDOW_SIZE.maxWidth, maximizable: false, fullscreenable: false,
-      frame: false, alwaysOnTop: true, transparent: process.platform === 'darwin', visualEffectState: 'active', backgroundColor: '#1b1d21', show: false,
+      frame: false, alwaysOnTop: true, transparent: true, roundedCorners: false, visualEffectState: 'active', backgroundColor: '#00000000', show: false,
       webPreferences: { preload: resolve(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true },
     });
     registerShellBridge(window.webContents, server.url, server.dispatch);
@@ -243,29 +254,35 @@ else {
     await window.loadURL(server.url);
     if (!process.argv.includes('--hidden')) show();
     if (integration) {
+      const outline = await window.webContents.executeJavaScript(`({ body: getComputedStyle(document.body).borderRadius, shell: getComputedStyle(document.getElementById('vibes')).borderRadius, background: getComputedStyle(document.body).backgroundColor })`);
+      if (outline.body !== outline.shell || outline.background !== 'rgba(0, 0, 0, 0)') throw new Error('Window and shell corners must share one transparent outline');
+      const corner = await window.webContents.capturePage({ x: 0, y: 0, width: 1, height: 1 });
+      if (corner.toBitmap()[3] === 255) throw new Error('The native window must not add an opaque outer corner');
+      process.stdout.write('PASS: shell and window share one rounded outline with transparent outer corners\n');
       const onboarded = await window.webContents.executeJavaScript(`new Promise(resolve=>{const deadline=Date.now()+10000;const check=()=>{const screen=document.getElementById('onboarding');if(screen&&!screen.hidden){document.getElementById('onboarding-login').checked=false;document.getElementById('onboarding-continue').click();resolve(true)}else if(Date.now()>deadline)resolve(false);else setTimeout(check,50)};check()})`);
       if (!onboarded) throw new Error('First-run onboarding did not appear');
       process.stdout.write('PASS: first-run onboarding offered startup and bar options\n');
       const deadline = Date.now() + 60000;
       let chatReady = false;
+      let chatFrame;
       while (Date.now() < deadline && !chatReady) {
         for (const frame of window.webContents.mainFrame.frames) {
-          chatReady = Boolean(await frame.executeJavaScript(`!!document.querySelector('#input') && !!document.querySelector('.arara-chat') && getComputedStyle(document.querySelector('.arara-chat')).fontFamily.length > 0`).catch(() => false));
-          if (chatReady) break;
+          chatReady = Boolean(await frame.executeJavaScript(`(()=>{const input=document.querySelector('#input');if(!input||!document.querySelector('.arara-chat'))return false;const bounds=input.getBoundingClientRect();return bounds.width>0&&bounds.height>0&&getComputedStyle(document.querySelector('.arara-chat')).fontFamily.length>0})()`).catch(() => false));
+          if (chatReady) { chatFrame = frame; break; }
         }
         if (!chatReady) await new Promise(resolve => setTimeout(resolve, 100));
       }
-      if (!chatReady) throw new Error('Automatic background startup did not render the original chat');
+      if (!chatReady) {
+        const state = await window.webContents.executeJavaScript(`({ feedback: document.getElementById('feedback').textContent, recovery: !document.getElementById('recover').hidden, updates: !document.getElementById('update').hidden, updateText: document.getElementById('update-products').textContent })`);
+        throw new Error(`Automatic background startup did not render the original chat: ${JSON.stringify(state)}`);
+      }
       for (const frame of window.webContents.mainFrame.frames) {
         const setup = await frame.executeJavaScript(`(()=>{if(!document.querySelector('.arara-chat'))return null;const panel=document.createElement('section');panel.className='cli-setup question-panel';document.querySelector('.arara-chat').append(panel);AraraChatKit.renderSetupPanel(panel,{title:'Platform setup',help:'',actions:[]});const style=getComputedStyle(panel);const result={background:style.backgroundColor,radius:style.borderRadius,padding:style.paddingLeft};panel.remove();return result})()`).catch(() => null) as { background: string; radius: string; padding: string } | null;
         if (setup && (setup.background !== 'rgba(0, 0, 0, 0.2)' || setup.radius !== '12px' || setup.padding !== '12px')) throw new Error(`Platform setup surface failed: ${JSON.stringify(setup)}`);
       }
 
-      let chatFrame;
-      for (const frame of window.webContents.mainFrame.frames) {
-        if (await frame.executeJavaScript("!!document.querySelector('#input')").catch(() => false)) { chatFrame = frame; break; }
-      }
       if (!chatFrame) throw new Error('Original chat frame missing for reasoning regression');
+      window.focus(); window.webContents.focus();
       const pasted = await chatFrame.executeJavaScript(`(async()=>{const input=document.querySelector('#input');input.focus();input.textContent='Original line\\n'.repeat(12);const range=document.createRange();range.selectNodeContents(input);range.collapse(false);const selection=getSelection();selection.removeAllRanges();selection.addRange(range);input.scrollTop=0;const data=new DataTransfer();data.setData('text/plain','Pasted one\\nPasted two\\nPasted three');input.dispatchEvent(new ClipboardEvent('paste',{clipboardData:data,bubbles:true,cancelable:true}));await new Promise(resolve=>setTimeout(resolve,100));const caret=selection.getRangeAt(0).getBoundingClientRect();const bounds=input.getBoundingClientRect();const visible=caret.height>0&&caret.top>=bounds.top-1&&caret.bottom<=bounds.bottom+1;const result={visible,scrolled:input.scrollTop>0,complete:input.textContent.includes('Pasted three')};input.textContent='';input.dispatchEvent(new Event('input',{bubbles:true}));return result})()`) as { visible: boolean; scrolled: boolean; complete: boolean };
       if (!pasted.visible || !pasted.scrolled || !pasted.complete) throw new Error(`Native paste caret was hidden: ${JSON.stringify(pasted)}`);
       const dialog = await chatFrame.executeJavaScript(`(()=>{const modal=AraraChatKit.openDialog({title:'Desktop setup fixture'});const color=getComputedStyle(modal.element).backgroundColor;modal.close();return color})()`);
