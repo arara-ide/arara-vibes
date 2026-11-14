@@ -1,14 +1,14 @@
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; }
-body { background: var(--vscode-editor-background); color: var(--vscode-foreground); font: var(--vscode-font-size)/1.5 var(--vscode-font-family); }
+body { background: transparent; border-radius: var(--window-radius); color: var(--vscode-foreground); font: var(--vscode-font-size)/1.5 var(--vscode-font-family); }
 button, select { font: inherit; color: inherit; }
 button { border: 0; border-radius: var(--radius-sm); padding: var(--space-1) var(--space-2); background: transparent; cursor: pointer; min-height: var(--control-height); transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out); }
 button:hover, select:hover { background: var(--vscode-toolbar-hoverBackground); }
 button:disabled { opacity: .5; cursor: wait; }
 button:focus-visible, select:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
 button[aria-pressed="true"] { color: var(--vscode-focusBorder); }
-#vibes { height: 100%; display: flex; flex-direction: column; border: 1px solid var(--vscode-widget-border); border-radius: var(--radius); overflow: hidden; }
+#vibes { height: 100%; display: flex; flex-direction: column; border: 1px solid var(--vscode-widget-border); border-radius: var(--radius); overflow: hidden; background: var(--vscode-editor-background); }
 #titlebar { height: var(--bar-height); flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 var(--space-3); gap: var(--space-2); -webkit-app-region: drag; user-select: none; }
 .brand { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
 .brand strong { font-weight: 550; white-space: nowrap; font-size: var(--font-small); }
@@ -129,7 +129,7 @@ body[data-expanded="true"] #tab-strip { transition: opacity var(--dur-base) var(
 html:has(#loading:not([data-off="true"])) :is(#signin, #onboarding, #recover, #update) { opacity: 0; transition: none; }
 #signin, #onboarding, #recover, #update { transition: opacity var(--dur-base) var(--ease-out) var(--dur-base); }
 .signin-actions { display: flex; gap: var(--space-2); align-items: center; }
-#update { position: absolute; inset: 0; z-index: 40; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-4); padding: var(--space-6); text-align: center; background: var(--vscode-editor-background); transition: opacity var(--dur-base) var(--ease-out) var(--dur-base), visibility 0s var(--dur-base); }
+#update { position: absolute; inset: 0; z-index: 40; align-items: center; justify-content: center; padding: var(--space-6); text-align: center; background: var(--vscode-editor-background); transition: opacity var(--dur-base) var(--ease-out) var(--dur-base), visibility 0s var(--dur-base); }
 html:has(#loading:not([data-off="true"])) #update { visibility: hidden; }
 #update[hidden] { display: none; }
 html[data-update="true"] :is(#tab-strip, .window-actions, .surface-frame, #feedback, #signin, #onboarding, #history-panel) { opacity: 0; pointer-events: none; transition: opacity var(--dur-base) var(--ease-out); }
@@ -145,7 +145,8 @@ html:has(#loading:not([data-off="true"])) #brand-logo { opacity: 0; transition: 
 .tab-drag-preview { position: fixed; top: -100vh; left: 0; opacity: 1; pointer-events: none; animation: none; background: var(--vscode-editor-background); }
 .tab-drop-marker { position: fixed; width: var(--tab-drop-width); background: var(--vscode-focusBorder); pointer-events: none; z-index: 30; border-radius: var(--radius-xs); }
 #update { overflow-y: auto; justify-content: safe center; }
-#update-products { display: flex; flex-direction: column; gap: var(--space-3); width: 100%; }
+#update, #update-products { display: flex; flex-direction: column; gap: var(--space-4); }
+#update-products { width: 100%; }
 .update-product { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--vscode-widget-border); border-radius: var(--radius); text-align: left; }
 .update-product > div { min-width: 0; }
 .update-product h2 { margin: 0 0 var(--space-1); font: inherit; font-weight: 600; }

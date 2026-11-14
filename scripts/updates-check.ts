@@ -75,14 +75,14 @@ void app.whenReady().then(async () => {
     const screenshot = join(process.argv[3], 'updates.png');
     await writeFile(screenshot, (await window.webContents.capturePage()).toPNG());
     process.stdout.write(`Updates screenshot: ${screenshot}\n`);
-    for (const [locale, motion, check, later, description] of [
-      ['pt', true, 'Verificar', 'Mais tarde', 'Conclua as tarefas em andamento antes de atualizar.'],
-      ['es', false, 'Buscar', 'Más tarde', 'Finaliza las tareas en curso antes de actualizar.'],
-      ['en', false, 'Check', 'Later', 'Finish ongoing tasks before updating.'],
+    for (const [locale, motion, check, later] of [
+      ['pt', true, 'Verificar', 'Mais tarde'],
+      ['es', false, 'Buscar', 'Más tarde'],
+      ['en', false, 'Check', 'Later'],
     ] as const) {
       actions.locale = locale; animations = motion;
       await checkStartup();
-      assert.deepEqual(await evaluate("['update-check', 'update-close', 'update-text'].map(id => document.getElementById(id).textContent)"), [check, later, description]);
+      assert.deepEqual(await evaluate("['update-check', 'update-close'].map(id => document.getElementById(id).textContent)"), [check, later]);
       assert.equal(await evaluate("document.querySelector('#update > img')"), null);
       await writeFile(join(process.argv[3], `updates-${locale}.png`), (await window.webContents.capturePage()).toPNG());
     }
@@ -118,6 +118,21 @@ void app.whenReady().then(async () => {
       await until(`document.querySelector('[data-product=arara-vibes] .update-status').textContent===${JSON.stringify(status)}`);
       assert.deepEqual(order, ['store:arara-code', 'store:arara-vibes']);
     }
+    store = false;
+    versions['arara-code'] = latest['arara-code']; versions['arara-vibes'] = latest['arara-vibes'];
+    for (const [locale, label] of [['en', 'Continue'], ['pt', 'Continuar'], ['es', 'Continuar']]) {
+      actions.locale = locale;
+      await manager.check(); await window.loadURL(server.url);
+      await evaluate("document.getElementById('updates-open').click()");
+      await until("!document.getElementById('update').hidden && !document.getElementById('update-check').disabled");
+      assert.equal(await evaluate("document.getElementById('update-close').textContent"), label);
+      assert.equal(await evaluate("document.getElementById('update-text')"), null);
+      assert.equal(await evaluate("getComputedStyle(document.getElementById('update')).rowGap === getComputedStyle(document.getElementById('update-products')).rowGap"), true);
+      await evaluate("document.getElementById('update-check').click()");
+      await until("document.getElementById('update').hidden");
+      assert.equal(await evaluate("document.activeElement.id"), 'updates-open');
+    }
+    process.stdout.write('PASS: current versions show Continue in en/pt/es; checking continues startup and all update sections share their gap\n');
     process.stdout.write('PASS: Store update actions and status in en/pt/es use the original IPC without downloading or installing either app\n');
     process.stdout.write('PASS: updates wait for startup without overlap or hidden focus, use concise en/pt/es text without a logo, honor motion settings and Later, serialize installations, disable busy controls and preserve Vibes after a Code failure\n');
   } finally { window.destroy(); server.close(); }

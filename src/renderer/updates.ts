@@ -1,5 +1,10 @@
 import { t } from '../i18n';
-import type { ProductUpdate, UpdatesState, UpdateProduct } from '../main/updates';
+import { UPDATE_PRODUCTS, type ProductUpdate, type UpdatesState } from '../main/updates';
+import type { UpdateProduct } from '../main/updates';
+
+export function updatesCurrent(state: UpdatesState) {
+  return !state.busy && UPDATE_PRODUCTS.every(product => state.products.some(item => item.product === product && item.status === 'current'));
+}
 
 export function updateStatus(item: ProductUpdate): string {
   switch (item.status) {
