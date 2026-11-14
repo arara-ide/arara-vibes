@@ -85,5 +85,8 @@
   "Copied": "Copied",
   "Run this command in a terminal to install, then reopen the app.": "Run this command in a terminal to install, then reopen the app.",
   "Send when limits reset": "Send when limits reset",
-  "Conversation actions": "Conversation actions"
+  "Conversation actions": "Conversation actions",
+  "Open Microsoft Store": "Open Microsoft Store",
+  "Complete the update in Microsoft Store, then reopen the app.": "Complete the update in Microsoft Store, then reopen the app.",
+  "Could not open Microsoft Store. Open its Library to update the app.": "Could not open Microsoft Store. Open its Library to update the app."
 }

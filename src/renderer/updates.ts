@@ -6,12 +6,14 @@ export function updateStatus(item: ProductUpdate): string {
     case 'checking': return t('Checking for updates…');
     case 'current': return t('Up to date');
     case 'available': return t('Version {0} is available.', item.latest ?? '');
+    case 'store': return t('Complete the update in Microsoft Store, then reopen the app.');
     case 'downloading': return t('Downloading the update…');
     case 'ready': return item.command ? t('Run this command in a terminal to install, then reopen the app.') : t('Ready to install');
     case 'installing': return t('Installing the update. Complete any system prompts.');
     case 'restarting': return t('Restarting to finish the update…');
     case 'development': return t('Development version');
     case 'error':
+      if (item.store && item.error === 'install') return t('Could not open Microsoft Store. Open its Library to update the app.');
       if (item.error === 'migration') return t('Close Arara Code and uninstall the old UserSetup installation while keeping your data. Then try the update again.');
       return t(item.error === 'check' ? 'Could not check for updates. Try again.' : 'Could not install the update. Close Arara Code if it is open and try again.');
   }
@@ -41,7 +43,7 @@ export function renderUpdates(container: HTMLElement, state: UpdatesState, insta
     const status = document.createElement('p'); status.className = 'update-status'; status.textContent = updateStatus(item); status.setAttribute('role', 'status');
     description.append(title, current, status);
     if (item.command) description.append(commandBlock(item.command, copy));
-    const button = document.createElement('button'); button.className = 'soft-btn'; button.textContent = t('Update now');
+    const button = document.createElement('button'); button.className = 'soft-btn'; button.textContent = t(item.store ? 'Open Microsoft Store' : 'Update now');
     button.setAttribute('aria-label', t('Update {0}', title.textContent));
     button.disabled = state.busy || (item.status !== 'available' && item.status !== 'error');
     button.onclick = async () => { button.disabled = true; try { await install(item.product); } catch { status.textContent = t('Could not complete the action. Try again.'); } finally { button.disabled = state.busy; } };

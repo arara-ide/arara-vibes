@@ -13,9 +13,11 @@ void app.whenReady().then(async () => {
   const order: string[] = [];
   let failCode = false;
   let animations = true;
+  let store = false;
   let releaseCode: (() => void) | undefined;
   const manager = new Updates({
-    current: async product => ({ version: versions[product] }), latest: async product => latest[product],
+    current: async product => ({ version: versions[product], store }), latest: async product => latest[product],
+    openStore: async product => { order.push(`store:${product}`); },
     download: async (product, version) => { order.push(`download:${product}:${version}`); return product; },
     install: async (product, _file, version) => {
       order.push(`install:${product}`);
@@ -102,6 +104,21 @@ void app.whenReady().then(async () => {
     await until("document.querySelector('[data-product=arara-code] .update-status').textContent.includes('Could not install')");
     assert.equal(order.includes('install:arara-vibes'), false);
     assert.equal(await evaluate("document.getElementById('update-check').disabled"), false);
+    store = true; failCode = false;
+    for (const [locale, label, status] of [
+      ['en', 'Open Microsoft Store', 'Complete the update in Microsoft Store, then reopen the app.'],
+      ['pt', 'Abrir Microsoft Store', 'Conclua a atualização na Microsoft Store e reabra o app.'],
+      ['es', 'Abrir Microsoft Store', 'Completa la actualización en Microsoft Store y vuelve a abrir la app.'],
+    ]) {
+      actions.locale = locale; order.length = 0;
+      await manager.check(); await window.loadURL(server.url);
+      await until("document.querySelectorAll('.update-product').length===2 && !document.getElementById('update-install').disabled");
+      assert.deepEqual(await evaluate("[...document.querySelectorAll('.update-product > button')].map(button=>button.textContent)"), [label, label]);
+      await evaluate("document.getElementById('update-install').click()");
+      await until(`document.querySelector('[data-product=arara-vibes] .update-status').textContent===${JSON.stringify(status)}`);
+      assert.deepEqual(order, ['store:arara-code', 'store:arara-vibes']);
+    }
+    process.stdout.write('PASS: Store update actions and status in en/pt/es use the original IPC without downloading or installing either app\n');
     process.stdout.write('PASS: updates wait for startup without overlap or hidden focus, use concise en/pt/es text without a logo, honor motion settings and Later, serialize installations, disable busy controls and preserve Vibes after a Code failure\n');
   } finally { window.destroy(); server.close(); }
   app.quit();

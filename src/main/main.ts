@@ -127,13 +127,14 @@ async function installCodeUpdate(file: string, version: string) {
 function createUpdates() {
   return new Updates({
     current: async product => {
-      if (product === 'arara-vibes') return { version: app.getVersion(), development: !app.isPackaged };
+      if (product === 'arara-vibes') return { version: app.getVersion(), development: !app.isPackaged, store: process.platform === 'win32' };
       const options = backgroundRuntime(__dirname, installedCode());
       const current = installation();
       if (options?.development) return { development: true };
       if (installedCode() && !current) throw new Error('Installed application metadata unavailable');
-      return { version: current?.product.version };
+      return { version: current?.product.version, store: process.platform === 'win32' };
     },
+    openStore: product => shell.openExternal(runtime.storeUri(product)),
     latest: product => runtime.latestCompanion(product, updateOptions(product)),
     download: (product, version) => runtime.prepareCompanion(product, { ...updateOptions(product), version, root: join(app.getPath('userData'), 'updates', product, version) }),
     install: async (product, file, version) => {
@@ -265,6 +266,11 @@ else {
         if (await frame.executeJavaScript("!!document.querySelector('#input')").catch(() => false)) { chatFrame = frame; break; }
       }
       if (!chatFrame) throw new Error('Original chat frame missing for reasoning regression');
+      const pasted = await chatFrame.executeJavaScript(`(async()=>{const input=document.querySelector('#input');input.focus();input.textContent='Original line\\n'.repeat(12);const range=document.createRange();range.selectNodeContents(input);range.collapse(false);const selection=getSelection();selection.removeAllRanges();selection.addRange(range);input.scrollTop=0;const data=new DataTransfer();data.setData('text/plain','Pasted one\\nPasted two\\nPasted three');input.dispatchEvent(new ClipboardEvent('paste',{clipboardData:data,bubbles:true,cancelable:true}));await new Promise(resolve=>setTimeout(resolve,100));const caret=selection.getRangeAt(0).getBoundingClientRect();const bounds=input.getBoundingClientRect();const visible=caret.height>0&&caret.top>=bounds.top-1&&caret.bottom<=bounds.bottom+1;const result={visible,scrolled:input.scrollTop>0,complete:input.textContent.includes('Pasted three')};input.textContent='';input.dispatchEvent(new Event('input',{bubbles:true}));return result})()`) as { visible: boolean; scrolled: boolean; complete: boolean };
+      if (!pasted.visible || !pasted.scrolled || !pasted.complete) throw new Error(`Native paste caret was hidden: ${JSON.stringify(pasted)}`);
+      const dialog = await chatFrame.executeJavaScript(`(()=>{const modal=AraraChatKit.openDialog({title:'Desktop setup fixture'});const color=getComputedStyle(modal.element).backgroundColor;modal.close();return color})()`);
+      if (process.platform === 'darwin' && dialog !== 'rgba(0, 0, 0, 0.7)') throw new Error('The native permission modal must use the shared overlay background');
+      process.stdout.write('PASS: native Vibes paste caret stays visible and shared permission modals have a background\n');
       await chatFrame.executeJavaScript(`(()=>{const input=document.querySelector('#input');input.textContent='Integration reasoning test';input.dispatchEvent(new InputEvent('input',{bubbles:true}));document.querySelector('#send').click()})()`);
       await chatFrame.executeJavaScript(`new Promise((resolve,reject)=>{const deadline=Date.now()+10000;const check=()=>{const node=document.querySelector('.reasoning-title');if(node){const head=node.querySelector('.reasoning-head');if(node.querySelector('.chevron,.reasoning-box,.reasoning-body')||head.hasAttribute('role')||head.hasAttribute('tabindex')||head.hasAttribute('aria-expanded'))reject(Error('Reasoning title is expandable or repeats its body'));else resolve(true)}else if(Date.now()>deadline)reject(Error('Native reasoning title did not appear'));else setTimeout(check,10)};check()})`);
       await chatFrame.executeJavaScript(`new Promise((resolve,reject)=>{const deadline=Date.now()+10000;const check=()=>{if(!document.querySelector('.reasoning'))resolve(true);else if(Date.now()>deadline)reject(Error('Native reasoning did not finish'));else setTimeout(check,50)};check()})`);

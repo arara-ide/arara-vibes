@@ -3,6 +3,7 @@ import { join } from 'node:path';
 
 export interface CompanionOptions { signal?: AbortSignal; root?: string; version?: string; format?: string; arch?: string }
 export interface CompanionModule {
+  storeUri(product: string): string;
   installAppImage(file: string, destination: string, pid: number): Promise<void>;
   latestCompanion(product: string, options?: CompanionOptions): Promise<string>;
   installMacDmg(file: string, product: string, options?: { appRoot?: string; waitPid?: number; open?: boolean }): Promise<string>;

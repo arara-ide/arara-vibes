@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { BackgroundHost, backgroundArguments, backgroundRuntime, codeSessionFile, configuredLocale, installedBackgroundExecutable } from './background';
+import { BackgroundHost, codeEnvironment, backgroundArguments, backgroundRuntime, codeSessionFile, configuredLocale, installedBackgroundExecutable } from './background';
 
 describe('background host startup', () => {
   it('starts the native host hidden, without loading sibling extensions or passing secrets', () => {
@@ -141,4 +141,27 @@ it('owns the native Linux process instead of a CLI launcher, and validates every
   expect(installedBackgroundExecutable(launcher, 'linux')).toBeUndefined();
   writeFileSync(product, JSON.stringify({ companionHostVersion: 1, applicationName: '../other' }));
   expect(installedBackgroundExecutable(launcher, 'linux')).toBeUndefined();
+});
+
+it('opens a normal editor on the native activation event without borrowing the hidden profile or environment', async () => {
+  const { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const root = mkdtempSync(join(tmpdir(), 'vibes-activation-'));
+  const entry = join(root, 'host.cjs'), result = join(root, 'foreground.json');
+  writeFileSync(entry, `if(process.argv.includes('--background-window')){console.log('background-window:activate');setInterval(()=>{},1000)}else{require('node:fs').writeFileSync(${JSON.stringify(result)},JSON.stringify({args:process.argv.slice(2),background:process.env.ARARA_VIBES_BACKGROUND,profile:process.env.ARARA_VIBES_PROFILE,hook:process.env.VSCODE_IPC_HOOK_CLI}))}`);
+  vi.stubEnv('ARARA_VIBES_PROFILE', '/hidden'); vi.stubEnv('VSCODE_IPC_HOOK_CLI', 'hidden.sock');
+  const host = new BackgroundHost({ executable: process.execPath, args: [entry], profile: join(root, 'hidden'), root });
+  try {
+    await host.start();
+    await vi.waitFor(() => expect(existsSync(result)).toBe(true));
+    expect(JSON.parse(readFileSync(result, 'utf8'))).toEqual({ args: ['--new-window'] });
+  } finally { await host.stop(); rmSync(root, { recursive: true, force: true }); }
+});
+
+it('clears inherited extension-host bootstrap and IPC state before launching either Code process', () => {
+  const source = { VSCODE_ESM_ENTRYPOINT: 'extensionHost', VSCODE_IPC_HOOK: 'parent.sock', VSCODE_PID: '42', VSCODE_NLS_CONFIG: '{}', VSCODE_DEV: '1', ELECTRON_RUN_AS_NODE: '1', NODE_OPTIONS: '--require=/parent.cjs', ARARA_VIBES_BACKGROUND: '1', ARARA_VIBES_HOSTS: '/hosts', PATH: '/bin' };
+  expect(codeEnvironment(source)).toEqual({ PATH: '/bin' });
+  expect(codeEnvironment(source, true, true)).toEqual({ PATH: '/bin', VSCODE_DEV: '1', ARARA_VIBES_BACKGROUND: '1', ARARA_VIBES_HOSTS: '/hosts', ARARA_DISABLE_COMPANION_DOWNLOAD: '1' });
+  expect(source.VSCODE_PID).toBe('42');
 });
