@@ -44,7 +44,6 @@
   "Browser": "Navegador",
   "Settings": "Configurações",
   "Arara did not start": "O Arara não iniciou",
-  "Arara Code did not answer. Try again to restart it.": "O Arara Code não respondeu. Tente novamente para reiniciá-lo.",
   "About Arara Vibes": "Sobre o Arara Vibes",
   "Welcome to Arara Vibes": "Boas-vindas ao Arara Vibes",
   "Choose how Arara Vibes starts. You can change this later in Settings › General.": "Escolha como o Arara Vibes inicia. Você pode mudar depois em Configurações › Geral.",
@@ -87,5 +86,18 @@
   "Conversation actions": "Ações da conversa",
   "Open Microsoft Store": "Abrir Microsoft Store",
   "Complete the update in Microsoft Store, then reopen the app.": "Conclua a atualização na Microsoft Store e reabra o app.",
-  "Could not open Microsoft Store. Open its Library to update the app.": "Não foi possível abrir a Microsoft Store. Abra a Biblioteca da loja para atualizar o app."
+  "Could not open Microsoft Store. Open its Library to update the app.": "Não foi possível abrir a Microsoft Store. Abra a Biblioteca da loja para atualizar o app.",
+  "Arara Vibes {0} will be installed in Applications and reopen automatically.": "O Arara Vibes {0} será instalado em Aplicativos e reaberto automaticamente.",
+  "Arara Code is open. Save your work and quit it: version {0} installs as soon as it closes, then Arara Code reopens.": "O Arara Code está aberto. Salve seu trabalho e feche-o: a versão {0} é instalada assim que ele fechar e o Arara Code reabre em seguida.",
+  "Arara Code {0} will be installed in Applications. The chat restarts when it finishes.": "O Arara Code {0} será instalado em Aplicativos. O chat reinicia quando terminar.",
+  "Update Arara Code and Arara Vibes?": "Atualizar o Arara Code e o Arara Vibes?",
+  "Update Arara Code?": "Atualizar o Arara Code?",
+  "Update Arara Vibes?": "Atualizar o Arara Vibes?",
+  "Cancel": "Cancelar",
+  "macOS blocked automatic installation": "O macOS bloqueou a instalação automática",
+  "Open installer in Finder": "Abrir instalador no Finder",
+  "macOS blocked automatic installation. Drag the app from the opened installer to Applications and choose Replace.": "O macOS bloqueou a instalação automática. Arraste o app do instalador aberto para Aplicativos e escolha Substituir.",
+  "Quit every open Arara Code window and try the update again.": "Feche todas as janelas abertas do Arara Code e tente atualizar novamente.",
+  "Open the installer in Finder, drag Arara Code to Applications and choose Replace. Arara Vibes restarts the chat when the new version is in place.": "Abra o instalador no Finder, arraste o Arara Code para Aplicativos e escolha Substituir. O Arara Vibes reinicia o chat quando a nova versão estiver no lugar.",
+  "Open the installer in Finder. Arara Vibes closes so you can drag it to Applications and choose Replace, then reopen it.": "Abra o instalador no Finder. O Arara Vibes fecha para você arrastá-lo para Aplicativos e escolher Substituir; depois, abra-o novamente."
 }

@@ -8,8 +8,21 @@ import { chatDocument } from './document';
 import type { HostInfo } from '../host/connection';
 import { tabLabel, initialSurface, needsSelection, moveTab, type Surface } from './tabs';
 import { insideDragViewport, tabDropDestination, tabDragVelocity, tabDragScroll, type DragPoint } from './tabDrag';
+import { ScreenSwitcher, visibleScreen, type Screen } from './screens';
 
 const element = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+const motionDuration = () => document.documentElement.dataset.motion === 'off' ? 0 : parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--dur-base')) || 0;
+const pause = (ms: number) => new Promise(done => setTimeout(done, ms));
+const autofocus: Partial<Record<Screen, string>> = { recover: 'retry', onboarding: 'onboarding-continue' };
+const screens = new ScreenSwitcher(({ target, shown }) => {
+  const root = document.documentElement;
+  root.dataset.screenTarget = target; root.dataset.screen = shown ?? '';
+  const focus = shown && autofocus[shown];
+  if (focus && !element(shown).contains(document.activeElement)) element(focus).focus();
+}, motionDuration);
+const presentScreen = () => screens.show(visibleScreen({ loading: element('loading').dataset.off !== 'true', update: !element('update').hidden, onboarding: !element('onboarding').hidden, recover: !element('recover').hidden, signin: !element('signin').hidden }));
+new MutationObserver(presentScreen).observe(element('stage'), { subtree: true, attributes: true, attributeFilter: ['hidden', 'data-off'] });
+presentScreen();
 interface View { frame: HTMLIFrameElement; token: string; epoch: number; ready: boolean; pending: unknown[]; state?: unknown }
 const views = new Map<string, View>();
 let surfaces: Surface[] = [];
@@ -120,7 +133,6 @@ let startedAt = 0;
 let onboarded = false;
 function recover() {
   reset(); feedback(); element('loading').dataset.off = 'true'; element('recover').hidden = false;
-  element<HTMLButtonElement>('retry').focus();
 }
 interface VibesPreferences { language: string; animations: boolean; splash: boolean; closeAction: string; shortcut: string; launchAtLogin: boolean; showInBar: boolean; onboarded: boolean }
 let currentPreferences: VibesPreferences | undefined;
@@ -138,7 +150,7 @@ async function onboarding() {
   const bar = /Mac/.test(navigator.platform) ? 'Show in the menu bar' : /Win/.test(navigator.platform) ? 'Show in the taskbar' : 'Show in the top bar';
   element('onboarding-bar-label').textContent = t(bar);
   element<HTMLInputElement>('onboarding-login').checked = true; element<HTMLInputElement>('onboarding-bar').checked = preferences.showInBar;
-  element('loading').dataset.off = 'true'; screen.hidden = false; element<HTMLButtonElement>('onboarding-continue').focus();
+  element('loading').dataset.off = 'true'; screen.hidden = false;
   const button = element<HTMLButtonElement>('onboarding-continue');
   await new Promise<void>(done => {
     button.onclick = async () => {
@@ -396,7 +408,19 @@ function bind(id: string, run: () => Promise<unknown>, disabled: () => boolean =
   };
   return refresh;
 }
-bind('expand', () => action('expand')); bind('hide', () => action('hide'));
+bind('expand', async () => {
+  const body = document.body;
+  const collapsing = body.dataset.expanded !== 'false';
+  body.dataset.resizing = collapsing ? 'fade' : 'active';
+  try {
+    if (collapsing) { await pause(motionDuration()); body.dataset.resizing = 'active'; }
+    else body.dataset.expanded = 'true';
+    await action('expand');
+    body.dataset.expanded = String(!collapsing);
+  } catch (error) { body.dataset.expanded = String(collapsing); throw error; }
+  finally { delete body.dataset.resizing; }
+});
+bind('hide', () => action('hide'));
 bind('retry', async () => { element('recover').hidden = true; hostRequested = false; connected = false; activeHost = undefined; busy(true); await discover(); });
 bind('sign-in-copy', async () => { await action('copySignInLink'); feedback(t('Sign-in link copied. Paste it in your browser.')); });
 let updatesState: UpdatesState = { products: [], busy: false };
@@ -410,7 +434,6 @@ function drawUpdates() {
   element<HTMLButtonElement>('update-close').disabled = updatesState.busy;
 }
 function openUpdates() {
-  document.documentElement.dataset.update = 'true';
   element('update').hidden = false;
   busy(false);
   if (document.body.dataset.expanded === 'false') void action('expand').catch(fail);
@@ -425,7 +448,7 @@ bind('update-check', async () => {
 });
 function closeUpdates() {
   if (updatesState.busy) return;
-  updatesDismissed = true; delete document.documentElement.dataset.update; element('update').hidden = true; element('updates-open').focus();
+  updatesDismissed = true; element('update').hidden = true; element('updates-open').focus();
 }
 bind('update-close', async () => closeUpdates());
 bind('sign-in', async () => { await action('signIn'); await discover(); });

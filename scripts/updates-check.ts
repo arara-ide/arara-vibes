@@ -15,7 +15,9 @@ void app.whenReady().then(async () => {
   let animations = true;
   let store = false;
   let releaseCode: (() => void) | undefined;
+  let confirmations: string[][] | undefined;
   const manager = new Updates({
+    confirm: async plan => { if (!confirmations) return true; confirmations.push(plan.map(item => item.product)); return false; },
     current: async product => ({ version: versions[product], store }), latest: async product => latest[product],
     openStore: async product => { order.push(`store:${product}`); },
     download: async (product, version) => { order.push(`download:${product}:${version}`); return product; },
@@ -118,7 +120,17 @@ void app.whenReady().then(async () => {
       await until(`document.querySelector('[data-product=arara-vibes] .update-status').textContent===${JSON.stringify(status)}`);
       assert.deepEqual(order, ['store:arara-code', 'store:arara-vibes']);
     }
-    store = false;
+    store = false; confirmations = []; order.length = 0; actions.locale = 'en';
+    await manager.check(); await window.loadURL(server.url);
+    await until("document.querySelectorAll('.update-product').length===2 && !document.getElementById('update-install').disabled");
+    await evaluate("document.querySelector('[data-product=arara-vibes] > button').click()");
+    for (const deadline = Date.now() + 10000; !confirmations.length && Date.now() < deadline;) await new Promise(resolve => setTimeout(resolve, 25));
+    await until("!document.getElementById('update-install').disabled && document.querySelector('[data-product=arara-vibes] .update-status').textContent.includes('is available')");
+    assert.deepEqual(confirmations, [['arara-code', 'arara-vibes']]);
+    assert.deepEqual(order, []);
+    assert.equal(await evaluate("document.querySelector('[data-product=arara-vibes] > button').disabled"), false);
+    confirmations = undefined;
+    process.stdout.write('PASS: declining the native update confirmation downloads and installs nothing and keeps both actions available\n');
     versions['arara-code'] = latest['arara-code']; versions['arara-vibes'] = latest['arara-vibes'];
     for (const [locale, label] of [['en', 'Continue'], ['pt', 'Continuar'], ['es', 'Continuar']]) {
       actions.locale = locale;

@@ -19,7 +19,6 @@ button[aria-pressed="true"] { color: var(--vscode-focusBorder); }
 #content { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 #stage { flex: 1; min-height: 0; position: relative; display: flex; }
 .surface-frame { width: 100%; height: 100%; border: 0; background: var(--vscode-editor-background); }
-#loading, #signin { position: absolute; inset: 0; background: var(--vscode-editor-background); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-4); padding: var(--space-6); text-align: center; }
 #loading { pointer-events: none; }
 .shine { --shine-base: color-mix(in srgb, var(--vscode-foreground) 55%, var(--vscode-editor-background)); --shine-peak: var(--vscode-foreground); font-weight: 500; letter-spacing: .01em; color: var(--shine-base); background-image: linear-gradient(100deg, var(--shine-base) 0%, var(--shine-base) 40%, var(--shine-peak) 50%, var(--shine-base) 60%, var(--shine-base) 100%); background-repeat: no-repeat; background-size: 300% 100%; background-position: 100% 0; -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; animation: shine 1.8s cubic-bezier(.4, 0, .2, 1) infinite; }
 @keyframes shine { from { background-position: 100% 0; } to { background-position: 0% 0; } }
@@ -38,10 +37,8 @@ h2 { font-size: inherit; margin: 0; font-weight: 550; }
 #feedback { padding: var(--space-2) var(--space-3); color: var(--vscode-descriptionForeground); overflow-wrap: anywhere; font-size: var(--font-small); }
 #feedback[data-error="true"] { color: var(--vscode-errorForeground); }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-body[data-expanded="false"] #content { display: none; }
 body[data-expanded="false"] #vibes { height: var(--bar-height); }
 #history-panel { animation: menu-in var(--dur-base) var(--ease-out); transform-origin: top right; }
-.surface-frame, #signin, #recover { animation: appear var(--dur-base) var(--ease-out); }
 @keyframes appear { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes breathe { from { opacity: .45; } to { opacity: 1; } }
 * { user-select: none; -webkit-user-select: none; }
@@ -50,7 +47,6 @@ html[data-motion="off"] *, html[data-motion="off"] *::before, html[data-motion="
 html[data-glass="true"] body, html[data-glass="true"] .surface-frame { background: transparent; }
 html[data-glass="true"] #vibes { background: transparent; transition: background-color var(--dur-base) var(--ease-out); }
 html[data-glass="true"][data-focused="false"] #vibes { background: rgb(0 0 0 / 60%); }
-html[data-glass="true"] #loading, html[data-glass="true"] #signin, html[data-glass="true"] #tab-strip { background: transparent; }
 #tab-strip { display: flex; align-items: end; gap: var(--space-1); padding: var(--space-1) var(--space-3) 0; background: var(--vscode-titleBar-inactiveBackground, var(--vscode-editor-background)); border-bottom: 1px solid var(--vscode-widget-border); flex: none; }
 #tabs { display: flex; align-items: end; min-width: 0; overflow-x: auto; scrollbar-width: thin; flex: 0 1 auto; }
 #tab-picker { position: relative; align-self: center; flex: none; }
@@ -61,8 +57,6 @@ html[data-glass="true"] #loading, html[data-glass="true"] #signin, html[data-gla
 .model-option { display: flex; align-items: center; justify-content: flex-start; gap: var(--space-2); text-align: left; padding: var(--space-2) var(--space-3); }
 .option-icon { fill: currentColor; width: var(--glyph-size); height: var(--glyph-size); flex: none; }
 .platform-glyph { background: currentColor; -webkit-mask: var(--glyph) center / contain no-repeat; mask: var(--glyph) center / contain no-repeat; }
-#recover { position: absolute; inset: 0; z-index: 25; background: var(--vscode-editor-background); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-3); height: 100%; text-align: center; padding: var(--space-4); }
-#recover[hidden] { display: none; }
 #recover p { color: var(--vscode-descriptionForeground); margin: 0; }
 @keyframes menu-in { from { opacity: 0; transform: translateY(-4px) scale(.97); } to { opacity: 1; transform: none; } }
 .glass-menu { background: var(--vscode-editorWidget-background, var(--vscode-editor-background)); border: 1px solid var(--vscode-widget-border); border-radius: var(--radius); box-shadow: 0 var(--space-2) var(--space-6) rgb(0 0 0 / 35%); }
@@ -102,13 +96,9 @@ html[data-glass="true"] .browser-tab[data-active="true"] { background: rgb(255 2
 .browser-tab.closing { animation: tab-out var(--dur-fast) var(--ease-out) forwards; pointer-events: none; }
 @keyframes tab-in { from { opacity: 0; transform: scale(.92); max-width: 0; } to { opacity: 1; transform: none; max-width: var(--tab-max-width); } }
 @keyframes tab-out { to { opacity: 0; transform: scale(.92); max-width: 0; min-width: 0; padding: 0; } }
-#loading { transition: opacity var(--dur-base) var(--ease-out), visibility 0s; }
-#loading[data-off="true"] { opacity: 0; visibility: hidden; transition: opacity var(--dur-base) var(--ease-out), visibility 0s var(--dur-base); }
 .tab-close, #tab-picker summary, .icon-btn, .conversation, .soft-btn { transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), opacity var(--dur-fast) var(--ease-out); }
 .glass-menu { background: var(--vscode-editorWidget-background, var(--vscode-editor-background)); }
 html[data-mac="true"] .glass-menu { background: rgb(0 0 0 / 70%); }
-#onboarding { position: absolute; inset: 0; z-index: 30; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-4); padding: var(--space-6); text-align: center; animation: appear var(--dur-base) var(--ease-out); }
-#onboarding[hidden] { display: none; }
 .onboarding-options { display: flex; flex-direction: column; gap: var(--space-2); align-items: flex-start; }
 .check { display: flex; align-items: center; gap: var(--space-2); cursor: pointer; user-select: none; }
 #titlebar .brand { margin-right: 0; }
@@ -119,24 +109,9 @@ html[data-mac="true"] .glass-menu { background: rgb(0 0 0 / 70%); }
 .tab-title { flex: none; overflow: visible; text-overflow: clip; }
 @keyframes tab-in { from { opacity: 0; transform: scale(.92); } to { opacity: 1; transform: none; } }
 .glass-menu .model-option:hover, .glass-menu .model-option:focus-visible, .glass-menu .model-option[aria-pressed="true"], .glass-menu .conversation:hover, .glass-menu .conversation:focus-visible, .glass-menu .soft-btn:hover { background: rgb(64 68 76 / 60%); }
-#loading, #loading[data-off="true"] { transition-duration: var(--dur-base), 0s; }
-#loading[data-off="true"] { transition-delay: 0s, var(--dur-base); }
-#tab-strip, .window-actions, .surface-frame, #feedback { transition: opacity var(--dur-base) var(--ease-out) var(--dur-base); }
-html:has(#loading:not([data-off="true"])) :is(#tab-strip, .window-actions, .surface-frame, #feedback) { opacity: 0; transition: none; }
 .browser-tab, .browser-tab[data-active="true"] { gap: 6px; }
-body[data-expanded="false"] #tab-strip { opacity: 0; pointer-events: none; visibility: hidden; transition: opacity var(--dur-base) var(--ease-out); }
-body[data-expanded="true"] #tab-strip { transition: opacity var(--dur-base) var(--ease-out); }
-html:has(#loading:not([data-off="true"])) :is(#signin, #onboarding, #recover, #update) { opacity: 0; transition: none; }
-#signin, #onboarding, #recover, #update { transition: opacity var(--dur-base) var(--ease-out) var(--dur-base); }
 .signin-actions { display: flex; gap: var(--space-2); align-items: center; }
-#update { position: absolute; inset: 0; z-index: 40; align-items: center; justify-content: center; padding: var(--space-6); text-align: center; background: var(--vscode-editor-background); transition: opacity var(--dur-base) var(--ease-out) var(--dur-base), visibility 0s var(--dur-base); }
-html:has(#loading:not([data-off="true"])) #update { visibility: hidden; }
-#update[hidden] { display: none; }
-html[data-update="true"] :is(#tab-strip, .window-actions, .surface-frame, #feedback, #signin, #onboarding, #history-panel) { opacity: 0; pointer-events: none; transition: opacity var(--dur-base) var(--ease-out); }
-html[data-glass="true"] #update { background: transparent; }
 .browser-tab:has(.tab-close[hidden]) { padding-right: var(--space-3); }
-#brand-logo { pointer-events: none; -webkit-user-drag: none; transition: opacity var(--dur-base) var(--ease-out) var(--dur-base); }
-html:has(#loading:not([data-off="true"])) #brand-logo { opacity: 0; transition: none; }
 #titlebar .brand, #tab-strip { -webkit-app-region: drag; }
 #tabs, #tab-picker, .browser-tab, .tab-close, .picker-panel { -webkit-app-region: no-drag; }
 #titlebar { padding-left: 10px; }
@@ -144,8 +119,6 @@ html:has(#loading:not([data-off="true"])) #brand-logo { opacity: 0; transition: 
 .browser-tab.tab-drag-source { opacity: var(--tab-drag-opacity); }
 .tab-drag-preview { position: fixed; top: -100vh; left: 0; opacity: 1; pointer-events: none; animation: none; background: var(--vscode-editor-background); }
 .tab-drop-marker { position: fixed; width: var(--tab-drop-width); background: var(--vscode-focusBorder); pointer-events: none; z-index: 30; border-radius: var(--radius-xs); }
-#update { overflow-y: auto; justify-content: safe center; }
-#update, #update-products { display: flex; flex-direction: column; gap: var(--space-4); }
 #update-products { width: 100%; }
 .update-product { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--vscode-widget-border); border-radius: var(--radius); text-align: left; }
 .update-product > div { min-width: 0; }
@@ -158,5 +131,29 @@ html:has(#loading:not([data-off="true"])) #brand-logo { opacity: 0; transition: 
 .update-product pre.code .copy { position: absolute; top: 6px; right: 6px; display: flex; min-height: 0; padding: 5px; border-radius: var(--radius-xs); background: color-mix(in srgb, var(--vscode-foreground) 10%, transparent); color: var(--vscode-foreground); }
 .update-product pre.code .copy svg { width: 12px; height: 12px; opacity: .55; }
 .update-product pre.code .copy:hover svg, .update-product pre.code .copy:focus-visible svg { opacity: .85; }
-
-html[data-mac="true"] :is(#loading, #signin, #onboarding, #recover, #update) { background: transparent; }
+.screen { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: safe center; gap: var(--space-4); padding: var(--space-6); text-align: center; overflow-y: auto; background: var(--screen-background); visibility: hidden; opacity: 0; pointer-events: none; transition: opacity var(--dur-base) var(--ease-out), visibility 0s linear var(--dur-base); }
+.screen[hidden] { display: flex !important; }
+#loading { z-index: 50; background: var(--vscode-editor-background); }
+#update { z-index: 40; }
+#onboarding { z-index: 30; }
+#recover { z-index: 25; gap: var(--space-3); }
+#signin { z-index: 20; }
+#update-products { display: flex; flex-direction: column; gap: var(--space-4); }
+:is(html[data-screen="loading"] #loading, html[data-screen="update"] #update, html[data-screen="onboarding"] #onboarding, html[data-screen="recover"] #recover, html[data-screen="signin"] #signin) { visibility: visible; opacity: 1; pointer-events: auto; transition: opacity var(--dur-base) var(--ease-out), visibility 0s; }
+html[data-screen="loading"] #loading { pointer-events: none; }
+.surface-frame { opacity: 0; pointer-events: none; transition: opacity var(--dur-base) var(--ease-out); }
+html[data-screen="chat"] .surface-frame { opacity: 1; pointer-events: auto; }
+#tab-strip, .window-actions, #feedback, #brand-logo { transition: opacity var(--dur-base) var(--ease-out); }
+:is(html[data-screen-target="loading"], html[data-screen-target="update"]) :is(#tab-strip, .window-actions, #feedback, #history-panel) { opacity: 0; pointer-events: none; }
+html[data-screen-target="loading"] #brand-logo { opacity: 0; }
+html:not([data-screen-target="chat"]) #history-panel { display: none; }
+#brand-logo { pointer-events: none; -webkit-user-drag: none; }
+#content { transition: opacity var(--dur-base) var(--ease-out); }
+body[data-expanded="false"] #content { display: none; }
+body[data-resizing] #content { opacity: 0; }
+body[data-resizing="active"] #content { content-visibility: hidden; }
+body:is([data-expanded="false"], [data-resizing]) #tab-strip { opacity: 0; transform: translateY(-4px); pointer-events: none; }
+body[data-expanded="false"] #tab-strip { visibility: hidden; }
+#tab-strip { transition: opacity var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out), visibility 0s; }
+html[data-mac="true"] .screen { --screen-background: var(--vibes-screen-background); }
+html[data-mac="true"] #loading { background: transparent; }

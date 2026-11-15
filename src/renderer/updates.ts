@@ -20,6 +20,8 @@ export function updateStatus(item: ProductUpdate): string {
     case 'error':
       if (item.store && item.error === 'install') return t('Could not open Microsoft Store. Open its Library to update the app.');
       if (item.error === 'migration') return t('Close Arara Code and uninstall the old UserSetup installation while keeping your data. Then try the update again.');
+      if (item.error === 'gatekeeper') return t('macOS blocked automatic installation. Drag the app from the opened installer to Applications and choose Replace.');
+      if (item.error === 'open') return t('Quit every open Arara Code window and try the update again.');
       return t(item.error === 'check' ? 'Could not check for updates. Try again.' : 'Could not install the update. Close Arara Code if it is open and try again.');
   }
 }

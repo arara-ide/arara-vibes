@@ -76,6 +76,7 @@ export class BackgroundHost {
   private starting?: Promise<void>;
   private opening?: Promise<void>;
   constructor(private readonly options: BackgroundOptions, private readonly report: (output: string) => void = () => {}) {}
+  get pid() { return this.child?.pid; }
   start(): Promise<void> {
     if (this.starting) return this.starting;
     if (this.child && this.child.exitCode === null && this.child.signalCode === null) return Promise.resolve();

@@ -1,5 +1,5 @@
 import { registerShellBridge } from './bridge';
-import { app, BrowserWindow, clipboard, globalShortcut, Menu, nativeTheme, Tray, nativeImage, screen, shell, systemPreferences } from 'electron';
+import { app, BrowserWindow, clipboard, globalShortcut, Menu, nativeTheme, Tray, nativeImage, screen, shell } from 'electron';
 import { join, resolve } from 'node:path';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -7,6 +7,8 @@ import { startShell } from '../host/server';
 import { companion } from '../host/companion';
 import { setLocale, t } from '../i18n';
 import { Updates, UpdateFailure, type UpdateProduct } from './updates';
+import { macBlockedPrompt, macUpdatePrompt } from './macUpdatePrompt';
+import { showNativePrompt } from './nativePrompt';
 import { updateCode } from './codeUpdate';
 import { codeInstallation } from '../host/installation';
 import { BackgroundHost, backgroundRuntime, prepareBackgroundRuntime } from '../host/background';
@@ -14,7 +16,7 @@ import { prepareMacBackgroundRuntime } from '../host/macBackground';
 import { updateCheckInterval, debInstallCommand, installPreparedUpdate } from './update';
 import { defaultShortcut, loadPreferences, normalizePreferences, resolveLanguage, savePreferences, loginCommand, setMacAutostart, setLinuxAutostart, type Preferences } from './preferences';
 import { APP_ICON, TRAY_ASSETS } from './tray';
-import { compactWindowBounds, expandedWindowBounds, fitWindowBounds, rememberWindowBounds, WINDOW_SIZE, type WindowPlacement } from './windowPlacement';
+import { compactWindowBounds, expandedWindowBounds, fitWindowBounds, rememberWindowBounds, RESIZE_SETTLE_MS, WINDOW_SIZE, type WindowPlacement } from './windowPlacement';
 import { loadWindowPlacement, saveWindowPlacement } from './windowPlacementStore';
 
 const smoke = process.argv.includes('--smoke-test');
@@ -41,7 +43,7 @@ const toggle = () => { const current = live(); if (current?.isVisible() && curre
 
 function animateBounds(target: BrowserWindow, to: Electron.Rectangle): Promise<void> {
   const from = target.getBounds();
-  if (systemPreferences.getAnimationSettings?.().prefersReducedMotion) { target.setBounds(to); return Promise.resolve(); }
+  if (!preferences.animations || process.platform === 'darwin') { target.setBounds(to, preferences.animations); return new Promise(resolve => setTimeout(resolve, RESIZE_SETTLE_MS)); }
   return new Promise(resolve => {
   const start = Date.now(); const duration = 220;
   const step = () => {
@@ -101,6 +103,27 @@ function shortcutRecording(recording: boolean) {
 }
 let updates: Updates;
 let codeUpdating = false;
+async function openCodePids() {
+  const bundle = process.platform === 'darwin' ? installation()?.location : undefined;
+  if (!bundle) return [];
+  const host = background?.pid;
+  return (await runtime.macAppPids(bundle)).filter(pid => pid !== host);
+}
+async function installMac(file: string, product: UpdateProduct, options: { appRoot?: string; waitPid?: number; open?: boolean }) {
+  try { await runtime.installMacDmg(file, product, options); }
+  catch (error) {
+    if ((error as { code?: unknown }).code !== runtime.MAC_GATEKEEPER_REJECTED) throw error;
+    if (!await showNativePrompt(live(), macBlockedPrompt(product))) throw new UpdateFailure('gatekeeper');
+    const failure = await shell.openPath(file);
+    if (failure) throw new Error(failure);
+  }
+  return file;
+}
+async function installMacCode(file: string, appRoot?: string) {
+  const open = await openCodePids();
+  if (open.length > 1) throw new UpdateFailure('open');
+  await installMac(file, 'arara-code', open.length ? { appRoot, waitPid: open[0] } : { appRoot, open: false });
+}
 const installedCode = () => runtime.installedCompanion('arara-code');
 const installation = () => codeInstallation(installedCode());
 const updateOptions = (product: UpdateProduct) => ({ signal: abort.signal, arch: app.runningUnderARM64Translation ? 'arm64' : process.arch, format: product === 'arara-code' ? installation()?.format : process.platform === 'linux' && !process.env.APPIMAGE ? 'deb' : undefined });
@@ -117,7 +140,7 @@ async function installCodeUpdate(file: string, version: string) {
         return restart;
       },
       install: async () => {
-        if (process.platform === 'darwin') await runtime.installMacDmg(file, 'arara-code', { appRoot: previous?.appRoot, open: false });
+        if (process.platform === 'darwin') await installMacCode(file, previous?.appRoot);
         else { const error = await shell.openPath(file); if (error) throw new Error(error); }
       },
       currentVersion: () => installation()?.product.version,
@@ -137,11 +160,12 @@ function createUpdates() {
       return { version: current?.product.version, store: process.platform === 'win32' };
     },
     openStore: product => shell.openExternal(runtime.storeUri(product)),
+    confirm: process.platform === 'darwin' ? async plan => showNativePrompt(live(), macUpdatePrompt(plan, plan.some(item => item.product === 'arara-code') && (await openCodePids()).length > 0)) : undefined,
     latest: product => runtime.latestCompanion(product, updateOptions(product)),
     download: (product, version) => runtime.prepareCompanion(product, { ...updateOptions(product), version, root: join(app.getPath('userData'), 'updates', product, version) }),
     install: async (product, file, version) => {
       if (product === 'arara-code') return installCodeUpdate(file, version);
-      return installPreparedUpdate(file, { platform: process.platform, appRoot: process.execPath, pid: process.pid, appImage: process.env.APPIMAGE, installAppImage: (...args) => runtime.installAppImage(...args), installMacDmg: (...args) => runtime.installMacDmg(...args), openPath: file => shell.openPath(file), quit: () => app.quit() });
+      return installPreparedUpdate(file, { platform: process.platform, appRoot: process.execPath, pid: process.pid, appImage: process.env.APPIMAGE, installAppImage: (...args) => runtime.installAppImage(...args), installMacDmg: (file, product, options) => installMac(file, product as UpdateProduct, options), openPath: file => shell.openPath(file), quit: () => app.quit() });
     },
     changed: state => server?.emit({ type: 'updates', updates: state }),
   });
@@ -224,7 +248,7 @@ else {
     const requested = placement.expanded ?? { x: area.x + Math.round((area.width - width) / 2), y: area.y + 20, width, height: Math.min(WINDOW_SIZE.initialHeight, area.height - 40) };
     const initial = fitWindowBounds(requested, screen.getDisplayMatching(requested).workArea);
     window = new BrowserWindow({ icon: resolve(__dirname, APP_ICON), ...initial, minWidth: WINDOW_SIZE.minWidth, minHeight: WINDOW_SIZE.minHeight, maxWidth: WINDOW_SIZE.maxWidth, maximizable: false, fullscreenable: false,
-      frame: false, alwaysOnTop: true, transparent: true, roundedCorners: false, visualEffectState: 'active', backgroundColor: '#00000000', show: false,
+      frame: false, alwaysOnTop: true, acceptFirstMouse: true, transparent: true, roundedCorners: false, visualEffectState: 'active', backgroundColor: '#00000000', show: false,
       webPreferences: { preload: resolve(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true },
     });
     registerShellBridge(window.webContents, server.url, server.dispatch);
@@ -303,6 +327,15 @@ else {
       const drag = await window.webContents.executeJavaScript(`(()=>{document.getElementById('tab-strip').scrollLeft=0;const tabs=[...document.querySelectorAll('.browser-tab')];const source=tabs[tabs.length-1];const target=tabs[0];const transfer=new DataTransfer();const rect=target.getBoundingClientRect();window.draggedVibesTab=source.dataset.surface;source.dispatchEvent(new DragEvent('dragstart',{bubbles:true,dataTransfer:transfer}));return new Promise(resolve=>requestAnimationFrame(()=>{document.getElementById('tabs').dispatchEvent(new DragEvent('dragover',{bubbles:true,cancelable:true,dataTransfer:transfer,clientX:rect.left,clientY:rect.top+rect.height/2}));const marker=document.querySelector('.tab-drop-marker');const result={enabled:tabs.every(tab=>tab.draggable),ghost:!!document.querySelector('.tab-drag-preview'),faded:Number(getComputedStyle(source).opacity)<1,marker:!marker.hidden&&getComputedStyle(marker).width==='2px'};document.getElementById('tabs').dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:transfer,clientX:rect.left,clientY:rect.top+rect.height/2}));resolve(result)}))})()`);
       if (!drag.enabled || !drag.ghost || !drag.faded || !drag.marker) throw new Error('Tab drag preview, faded source or insertion marker failed');
       await window.webContents.executeJavaScript(`new Promise((resolve,reject)=>{const deadline=Date.now()+5000;const check=()=>{if(document.querySelector('.browser-tab').dataset.surface===window.draggedVibesTab&&!document.querySelector('.tab-drag-preview'))resolve(true);else if(Date.now()>deadline)reject(Error('Dropped tab order was not retained'));else setTimeout(check,50)};check()})`);
+      const shellWindow = window;
+      const resize = () => shellWindow.webContents.executeJavaScript(`new Promise(resolve=>{const frames=[];const tabs=document.getElementById('tab-strip');const content=document.getElementById('content');const shown=node=>node.getClientRects().length&&getComputedStyle(node).visibility!=='hidden'?Number(getComputedStyle(node).opacity):0;const start=performance.now();const sample=()=>{frames.push({at:performance.now(),height:innerHeight,tabs:shown(tabs),content:shown(content)});if(performance.now()-start<1500)requestAnimationFrame(sample);else resolve(frames)};requestAnimationFrame(sample);document.getElementById('expand').click()})`) as Promise<{ at: number; height: number; tabs: number; content: number }[]>;
+      const collapse = await resize();
+      const shrinking = collapse.findIndex(frame => frame.height < collapse[0].height);
+      if (shrinking <= 0 || !collapse.slice(0, shrinking).some(frame => frame.tabs > 0.05 && frame.tabs < 0.95) || collapse.slice(shrinking).some(frame => frame.tabs > 0.05 || frame.content > 0.05)) throw new Error(`Platform tabs did not fade out before collapsing: ${JSON.stringify(collapse.filter((_, index) => index % 6 === 0))}`);
+      const expand = await resize();
+      const final = expand.at(-1)!.height;
+      if (!expand.some(frame => frame.height === final && frame.tabs > 0.05 && frame.tabs < 0.95) || expand.some(frame => frame.height < final && (frame.tabs > 0.05 || frame.content > 0.05)) || expand.at(-1)!.tabs < 0.99) throw new Error(`Platform tabs did not fade in after expanding: ${JSON.stringify(expand.filter((_, index) => index % 6 === 0))}`);
+      process.stdout.write('PASS: platform tabs and the chat fade out before collapsing and fade in after the native window expands\n');
       const picker = await window.webContents.executeJavaScript(`(()=>{const picker=document.getElementById('tab-picker');picker.open=true;picker.dispatchEvent(new Event('toggle'));const anchor=picker.querySelector('summary').getBoundingClientRect();const panel=picker.querySelector('.picker-panel').getBoundingClientRect();const options=[...document.querySelectorAll('#platform-options button')];const result={sharing:options.findIndex(option=>option.dataset.platform==='sharing')===options.findIndex(option=>option.dataset.platform==='settings')-1,iconed:options.every(option=>option.querySelector('.option-icon')),badge:!!document.querySelector('.model-badge'),below:panel.top>=anchor.bottom&&panel.left>=0&&panel.right<=innerWidth,inset:document.getElementById('tab-strip').getBoundingClientRect().left>0,motion:matchMedia('(prefers-reduced-motion: reduce)').matches};picker.open=false;return result})()`);
       await window.webContents.executeJavaScript(`document.querySelector('[data-platform="sharing"]').click()`);
       const sharingDeadline = Date.now() + 10000;
