@@ -1,6 +1,7 @@
 export interface WindowPosition { x: number; y: number }
 export interface WindowBounds extends WindowPosition { width: number; height: number }
 export interface WindowPlacement { expanded?: WindowBounds; compact?: WindowPosition }
+export const RESIZE_SETTLE_MS = 50;
 export const WINDOW_SIZE = { minWidth: 360, maxWidth: 520, minHeight: 360, compactHeight: 44, initialHeight: 480 };
 
 export function fitWindowBounds(bounds: WindowBounds, area: WindowBounds): WindowBounds {

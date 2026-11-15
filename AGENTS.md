@@ -11,3 +11,5 @@ Siga `../AGENTS.md` e `../CLAUDE.md`. Operação e arquitetura em `../ac-docs/do
 - Verifique `npm run typecheck`, `npm run lint`, `npm test`, `npm run check:i18n`, `npm run build` e `node ../arara-ai/scripts/test-vibes-ide.cjs --app`, com dados isolados.
 
 Em conexão com o Arara Vibes, o PWA não exibe o seletor Arara Chat/Arara Bot. O host anuncia plataformas disponíveis, incluindo as sem guia, e a ação autenticada `createConversation` cria uma guia dinâmica com deduplicação por pedido. Catálogo, criação e documentos usam o canal direto/relay cifrado existente; o backend não recebe conteúdo. A fila usa o kit original, com texto de uma linha centralizado e lixeira sem fundo à esquerda, preservando sincronização e despacho único.
+
+- Instalador e teste de atualização no macOS não deixam resto em `/Applications`: o estágio `.arara-install-*` sai em toda saída com `/bin/rm -rf` (nunca `fs.rm` dentro do Electron, por causa do `.asar`), testes instalam só em `<tmp>/Applications` e nada é preparado, instalado ou apagado no `/Applications` real sem pedido explícito. Regra completa na seção 3 do `AGENTS.md` do workspace.

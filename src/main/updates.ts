@@ -3,8 +3,10 @@ import { newerVersion, isCurrentVersion, validVersion } from './update';
 export const UPDATE_PRODUCTS = ['arara-code', 'arara-vibes'] as const;
 export type UpdateProduct = typeof UPDATE_PRODUCTS[number];
 export type UpdateStatus = 'checking' | 'current' | 'available' | 'store' | 'downloading' | 'ready' | 'installing' | 'restarting' | 'error' | 'development';
-export class UpdateFailure extends Error { constructor(readonly reason: 'migration') { super(reason); } }
-export interface ProductUpdate { product: UpdateProduct; current?: string; latest?: string; store?: boolean; status: UpdateStatus; error?: 'check' | 'install' | 'migration'; command?: string }
+export type UpdateFailureReason = 'migration' | 'gatekeeper' | 'open';
+export class UpdateFailure extends Error { constructor(readonly reason: UpdateFailureReason) { super(reason); } }
+export interface ProductUpdate { product: UpdateProduct; current?: string; latest?: string; store?: boolean; status: UpdateStatus; error?: 'check' | 'install' | UpdateFailureReason; command?: string }
+export interface PlannedUpdate { product: UpdateProduct; version: string }
 export interface UpdatesState { products: ProductUpdate[]; busy: boolean }
 interface UpdateDependencies {
   current(product: UpdateProduct): Promise<{ version?: string; development?: boolean; store?: boolean }>;
@@ -12,6 +14,7 @@ interface UpdateDependencies {
   latest(product: UpdateProduct): Promise<string>;
   download(product: UpdateProduct, version: string): Promise<string>;
   install(product: UpdateProduct, file: string, version: string): Promise<string | void>;
+  confirm?(plan: PlannedUpdate[]): Promise<boolean>;
   changed(state: UpdatesState): void;
 }
 
@@ -21,6 +24,7 @@ export class Updates {
   private busy = false;
   constructor(private readonly deps: UpdateDependencies) {}
   state(): UpdatesState { return { products: this.products.map(item => ({ ...item })), busy: this.busy }; }
+  private item(product: UpdateProduct) { return this.products.find(entry => entry.product === product)!; }
   private publish() { this.deps.changed(this.state()); }
   private set(product: UpdateProduct, patch: Partial<ProductUpdate>) {
     this.products = this.products.map(item => item.product === product ? { ...item, ...patch } : item);
@@ -49,8 +53,11 @@ export class Updates {
       await Promise.all(UPDATE_PRODUCTS.map(item => this.inspect(item)));
       const selected = product === 'arara-code' ? ['arara-code'] as const : UPDATE_PRODUCTS;
       const files = new Map<UpdateProduct, string>();
+      const items = selected.map(name => this.item(name));
+      const plan = items.flatMap(item => !item.store && item.status === 'available' && item.latest ? [{ product: item.product, version: item.latest }] : []);
+      if (plan.length && this.deps.confirm && !items.some(item => !item.store && item.status === 'error') && !await this.deps.confirm(plan)) return;
       for (const name of selected) {
-        const item = this.products.find(entry => entry.product === name)!;
+        const item = this.item(name);
         if (item.store && (item.status === 'available' || item.status === 'error')) {
           try {
             if (!this.deps.openStore) throw new Error('Microsoft Store unavailable');
@@ -66,7 +73,7 @@ export class Updates {
         catch { this.set(name, { status: 'error', error: 'install' }); return; }
       }
       for (const [name, file] of files) {
-        const item = this.products.find(entry => entry.product === name)!;
+        const item = this.item(name);
         this.set(name, { status: 'installing' });
         try {
           const command = await this.deps.install(name, file, item.latest!);

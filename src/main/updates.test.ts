@@ -120,3 +120,39 @@ it('keeps the Store available when its public version catalog is temporarily una
   expect(h.deps.download).not.toHaveBeenCalled(); expect(h.deps.install).not.toHaveBeenCalled();
   expect(updates.state().products[0].status).toBe('store');
 });
+
+it('asks once with the planned installers before downloading and stops without changes when declined', async () => {
+  const h = harness('1.135.07430'); const confirm = vi.fn(async () => false);
+  const updates = new Updates({ ...h.deps, confirm });
+  await updates.update('arara-vibes');
+  expect(confirm).toHaveBeenCalledTimes(1);
+  expect(confirm).toHaveBeenCalledWith([{ product: 'arara-vibes', version: 'v0.2.0' }]);
+  expect(h.deps.download).not.toHaveBeenCalled();
+  expect(h.deps.install).not.toHaveBeenCalled();
+  expect(updates.state()).toMatchObject({ busy: false, products: [{ status: 'current' }, { status: 'available', error: undefined }] });
+});
+
+it('installs after a confirmation that lists Code before Vibes', async () => {
+  const h = harness(); const confirm = vi.fn(async () => true);
+  const updates = new Updates({ ...h.deps, confirm });
+  await updates.update();
+  expect(confirm).toHaveBeenCalledWith([{ product: 'arara-code', version: '1.135.07430' }, { product: 'arara-vibes', version: 'v0.2.0' }]);
+  expect(h.order).toEqual(['download:arara-code', 'download:arara-vibes', 'install:arara-code', 'install:arara-vibes']);
+});
+
+it('does not ask for confirmation when nothing can be installed', async () => {
+  const h = harness('1.135.07430', 'v0.2.0'); const confirm = vi.fn(async () => true);
+  await new Updates({ ...h.deps, confirm }).update();
+  expect(confirm).not.toHaveBeenCalled();
+  const failing = harness(); failing.deps.latest.mockImplementation(async product => { if (product === 'arara-code') throw Error('HTTP 403'); return 'v0.2.0'; });
+  await new Updates({ ...failing.deps, confirm }).update('arara-vibes');
+  expect(confirm).not.toHaveBeenCalled();
+});
+
+for (const reason of ['gatekeeper', 'open'] as const) {
+  it(`keeps the ${reason} installation failure reason for its message`, async () => {
+    const h = harness(); h.deps.install.mockImplementation(async () => { throw new UpdateFailure(reason); });
+    await h.updates.update('arara-code');
+    expect(h.updates.state().products[0]).toMatchObject({ status: 'error', error: reason });
+  });
+}

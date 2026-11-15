@@ -15,6 +15,8 @@
     "test:surfaces": "node scripts/test-mac-surfaces.mjs",
     "test:transport": "node scripts/test-shell.mjs --transport",
     "test:updates": "node scripts/test-shell.mjs --updates",
+    "test:prompt:mac": "node scripts/test-shell.mjs --prompt",
+    "test:input:mac": "node scripts/test-mac-input.mjs",
     "test:autostart:mac": "node scripts/test-macos-autostart.mjs",
     "test:autostart:runtime": "node scripts/test-login-runtime.mjs",
     "test:lifecycle": "node scripts/test-lifecycle.mjs",

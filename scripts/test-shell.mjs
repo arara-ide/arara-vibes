@@ -8,7 +8,7 @@ import { build } from 'esbuild';
 const root = resolve(import.meta.dirname, '..');
 const scratch = mkdtempSync(join(tmpdir(), 'vibes-shell-check-'));
 const entry = join(scratch, 'check.cjs');
-await build({ entryPoints: [join(root, process.argv.includes('--placement') ? 'scripts/placement-check.ts' : process.argv.includes('--transport') ? 'scripts/transport-check.ts' : process.argv.includes('--updates') ? 'scripts/updates-check.ts' : 'scripts/shell-check.ts')], bundle: true, platform: 'node', format: 'cjs', outfile: entry, external: ['electron'], logLevel: 'silent' });
+await build({ entryPoints: [join(root, process.argv.includes('--placement') ? 'scripts/placement-check.ts' : process.argv.includes('--transport') ? 'scripts/transport-check.ts' : process.argv.includes('--updates') ? 'scripts/updates-check.ts' : process.argv.includes('--prompt') ? 'scripts/prompt-check.ts' : 'scripts/shell-check.ts')], bundle: true, platform: 'node', format: 'cjs', outfile: entry, external: ['electron'], logLevel: 'silent' });
 const env = { ...process.env, ARARA_VIBES_HOSTS: join(scratch, 'hosts'), ARARA_DISABLE_COMPANION_DOWNLOAD: '1', ARARA_VIBES_DISABLE_UPDATES: '1' };
 if (process.argv.includes('--placement')) {
   const home = join(scratch, 'home');

@@ -31,9 +31,10 @@ try {
       assert.equal(values['#search'], 'rgb(83, 96, 127)', platform);
     }
     await page.goto('about:blank');
-    await page.setContent(`<html data-mac="${platform === 'MacIntel'}"><head><style>${readFileSync(resolve(root, 'src/renderer/tokens.css'), 'utf8')}${readFileSync(resolve(root, 'src/renderer/shell.css'), 'utf8')}</style></head><body><div id="signin"></div><div id="update"></div></body></html>`);
-    assert.equal(await page.locator('#signin').evaluate(node => getComputedStyle(node).backgroundColor), platform === 'MacIntel' ? 'rgba(0, 0, 0, 0)' : 'rgb(27, 29, 33)');
+    await page.setContent(`<html data-mac="${platform === 'MacIntel'}"><head><style>${readFileSync(resolve(root, 'src/renderer/tokens.css'), 'utf8')}${readFileSync(resolve(root, 'src/renderer/shell.css'), 'utf8')}</style></head><body><div id="stage">${['loading', 'recover', 'onboarding', 'update', 'signin'].map(id => `<section id="${id}" class="screen"></section>`).join('')}</div></body></html>`);
+    for (const id of ['recover', 'onboarding', 'update', 'signin']) assert.equal(await page.locator(`#${id}`).evaluate(node => getComputedStyle(node).backgroundColor), platform === 'MacIntel' ? 'rgba(0, 0, 0, 0.7)' : 'rgb(27, 29, 33)', `${platform}: #${id}`);
+    assert.equal(await page.locator('#loading').evaluate(node => getComputedStyle(node).backgroundColor), platform === 'MacIntel' ? 'rgba(0, 0, 0, 0)' : 'rgb(27, 29, 33)', `${platform}: #loading`);
     await context.close();
   }
-  console.log('PASS: original chat/settings surfaces use dark Mac backgrounds; Windows/Linux theme backgrounds and primary button color are preserved');
+  console.log('PASS: original chat/settings surfaces use dark Mac backgrounds; Mac recovery, onboarding, update and sign-in screens share the modal background; Windows/Linux theme backgrounds and primary button color are preserved');
 } finally { await browser.close(); }
