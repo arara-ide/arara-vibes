@@ -1,11 +1,12 @@
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 
 interface CodeProduct { version?: string; companionHostVersion?: number; applicationName?: string; araraInstallFormat?: string; target?: string }
 export function codeInstallation(installed: string | undefined, platform = process.platform) {
   if (!installed) return;
   try {
-    const location = realpathSync(installed);
+    if (platform === 'win32' && !existsSync(installed)) return;
+    const location = platform === 'win32' ? resolve(installed) : realpathSync(installed);
     const candidates = platform === 'darwin' ? [join(location, 'Contents/Resources/app/product.json')] : [join(dirname(location), 'resources/app/product.json'), join(dirname(location), '../resources/app/product.json')];
     for (const file of candidates) {
       let product: CodeProduct;

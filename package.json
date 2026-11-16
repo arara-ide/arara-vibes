@@ -33,7 +33,8 @@
     "preview": "node dist/preview.mjs",
     "build:icons": "node scripts/build-icons.cjs",
     "test:icons": "node scripts/test-icons.cjs",
-    "test:store:windows": "node scripts/test-windows-store.mjs"
+    "test:store:windows": "node scripts/test-windows-store.mjs",
+    "test:startup:windows": "node scripts/test-windows-startup.mjs"
   },
   "build": {
     "appId": "br.app.code.arara.vibes",

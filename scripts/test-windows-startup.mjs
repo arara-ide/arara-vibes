@@ -1,0 +1,23 @@
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { buildSync } from 'esbuild';
+
+assert.equal(process.platform, 'win32', 'Run this test on Windows with Arara Code installed');
+const require = createRequire(import.meta.url);
+const root = resolve(import.meta.dirname, '..');
+const scratch = mkdtempSync(join(tmpdir(), 'vibes-windows-startup-'));
+const shell = join(scratch, 'shell');
+mkdirSync(shell);
+writeFileSync(join(shell, 'preferences.json'), JSON.stringify({ onboarded: true, launchAtLogin: false }));
+const entry = join(scratch, 'check.cjs');
+buildSync({ entryPoints: [join(root, 'scripts/windows-startup-check.ts')], bundle: true, platform: 'node', format: 'cjs', outfile: entry, external: ['electron'] });
+const env = { ...process.env, ARARA_VIBES_DISABLE_UPDATES: '1', ARARA_DISABLE_COMPANION_DOWNLOAD: '1', ARARA_DESKTOP_AUTO_UPDATE: '0', ARARA_VIBES_PROFILE: join(scratch, 'profile'), ARARA_VIBES_ROOT: scratch, ARARA_VIBES_HOSTS: join(scratch, 'hosts'), ARARA_VIBES_SESSION_FILE: join(scratch, 'empty-session.json') };
+for (const key of ['ELECTRON_RUN_AS_NODE', 'NODE_OPTIONS', 'ARARA_CODE_EXECUTABLE', 'ARARA_CODE_ARGS', 'ARARA_AI_EXTENSION_PATH']) delete env[key];
+const child = spawn(require('electron'), [entry, process.env.ARARA_VIBES_DIST || join(root, 'dist'), shell], { env, stdio: 'inherit' });
+const timer = setTimeout(() => child.kill(), 90000);
+child.on('error', error => { clearTimeout(timer); console.error(error); process.exitCode = 1; });
+child.on('exit', code => { clearTimeout(timer); process.exitCode = code ?? 1; });
