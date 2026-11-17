@@ -1,7 +1,7 @@
 import { registerShellBridge } from './bridge';
-import { app, BrowserWindow, clipboard, globalShortcut, Menu, nativeTheme, Tray, nativeImage, screen, shell } from 'electron';
+import { app, BrowserWindow, clipboard, globalShortcut, Menu, nativeTheme, powerSaveBlocker, Tray, nativeImage, screen, shell } from 'electron';
 import { join, resolve } from 'node:path';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { startShell } from '../host/server';
 import { companion } from '../host/companion';
@@ -37,6 +37,21 @@ let startingBackground: Promise<void> | undefined;
 let quitting = false;
 let hostStopped = false;
 let stopping: Promise<void> | undefined;
+let sleepBlockerId: number | undefined;
+function setSleepBlocker(enabled: boolean) {
+  const trace = process.env.ARARA_KEEP_AWAKE_TEST_TRACE;
+  if (enabled) {
+    if (sleepBlockerId !== undefined && powerSaveBlocker.isStarted(sleepBlockerId)) return;
+    sleepBlockerId = powerSaveBlocker.start('prevent-app-suspension');
+    if (trace) try { appendFileSync(trace, JSON.stringify({ pid: process.pid, source: 'vibes-shell', event: 'blocker-started', id: sleepBlockerId, isStarted: powerSaveBlocker.isStarted(sleepBlockerId), at: Date.now() }) + '\n'); } catch { }
+    return;
+  }
+  if (sleepBlockerId === undefined) return;
+  const id = sleepBlockerId;
+  sleepBlockerId = undefined;
+  if (powerSaveBlocker.isStarted(id)) powerSaveBlocker.stop(id);
+  if (trace) try { appendFileSync(trace, JSON.stringify({ pid: process.pid, source: 'vibes-shell', event: 'blocker-stopped', id, at: Date.now() }) + '\n'); } catch { }
+}
 const live = () => window && !window.isDestroyed() ? window : undefined;
 const show = () => { const current = live(); if (!current) return; const wasHidden = !current.isVisible(); if (wasHidden && preferences?.splash) { void current.webContents.executeJavaScript('window.vibesSplash?.()').catch(() => undefined).finally(() => { if (!current.isDestroyed()) { current.show(); current.focus(); } }); return; } current.show(); current.focus(); };
 const toggle = () => { const current = live(); if (current?.isVisible() && current.isFocused()) current.hide(); else show(); };
@@ -240,7 +255,10 @@ else {
     const locale = resolveLanguage(preferences.language, app.getLocale());
     setLocale(locale);
     updates = createUpdates();
-    server = await startShell(__dirname, { run, state: () => ({ pinned, expanded, glass, updates: updates.state() }), locale, preferences: updatePreferences, checkUpdates: () => updates.check(), installUpdate: product => updates.update(product), copyText: text => clipboard.writeText(text), shortcutRecording });
+    server = await startShell(__dirname, { run, state: () => ({ pinned, expanded, glass, updates: updates.state() }), locale, preferences: updatePreferences, checkUpdates: () => updates.check(), installUpdate: product => updates.update(product), copyText: text => clipboard.writeText(text), shortcutRecording, hostEvent: event => {
+      if (event.type === 'keepAwake') setSleepBlocker(event.enabled === true);
+      if (event.type === 'disconnected') setSleepBlocker(false);
+    } });
     void watchUpdates();
     const area = screen.getPrimaryDisplay().workArea;
     const width = Math.min(WINDOW_SIZE.minWidth, area.width);
@@ -365,11 +383,11 @@ else {
       }
       if (!sharingReady) throw new Error('Sharing tab did not render the original controls');
       const sharingTab = await window.webContents.executeJavaScript(`document.querySelector('[role="tab"][aria-selected="true"]').textContent`);
-      if (sharingTab !== t('Share limits') || await window.webContents.executeJavaScript(`!![...document.querySelectorAll('.tab-title')].find(tab=>tab.textContent==='Claude Code')`)) throw new Error('Configuring borrowing navigated away from sharing');
+      if (sharingTab !== t('Invite to share limits') || await window.webContents.executeJavaScript(`!![...document.querySelectorAll('.tab-title')].find(tab=>tab.textContent==='Claude Code')`)) throw new Error('Configuring borrowing navigated away from sharing');
       const optionColor = await window.webContents.executeJavaScript(`(()=>{const option=document.querySelector('[data-platform="sharing"]');return getComputedStyle(option.querySelector('svg')).fill===getComputedStyle(option).color})()`);
       if (!optionColor) throw new Error('Sharing option icon does not inherit the menu color');
       await window.webContents.executeJavaScript(`document.querySelector('[data-platform="settings"]').click()`);
-      await window.webContents.executeJavaScript(`new Promise((resolve,reject)=>{const deadline=Date.now()+10000;const check=()=>{const tabs=[...document.querySelectorAll('.tab-title')];const sharing=tabs.find(tab=>tab.textContent===${JSON.stringify(t('Share limits'))});if(tabs.some(tab=>tab.textContent===${JSON.stringify(t('Settings'))})){sharing.click();resolve(true)}else if(Date.now()>deadline)reject(Error('Settings tab did not open'));else setTimeout(check,50)};check()})`);
+      await window.webContents.executeJavaScript(`new Promise((resolve,reject)=>{const deadline=Date.now()+10000;const check=()=>{const tabs=[...document.querySelectorAll('.tab-title')];const sharing=tabs.find(tab=>tab.textContent===${JSON.stringify(t('Invite to share limits'))});if(tabs.some(tab=>tab.textContent===${JSON.stringify(t('Settings'))})){sharing.click();resolve(true)}else if(Date.now()>deadline)reject(Error('Settings tab did not open'));else setTimeout(check,50)};check()})`);
       while (await window.webContents.executeJavaScript(`!![...document.querySelectorAll('.browser-tab')].find(tab=>tab.querySelector('.tab-title').textContent==='Codex')`)) {
         const count = await window.webContents.executeJavaScript(`document.querySelectorAll('.browser-tab').length`);
         await window.webContents.executeJavaScript(`[...document.querySelectorAll('.browser-tab')].find(tab=>tab.querySelector('.tab-title').textContent==='Codex').querySelector('.tab-close').click()`);
@@ -455,6 +473,7 @@ else {
 app.on('activate', show);
 app.on('before-quit', event => {
   quitting = true;
+  setSleepBlocker(false);
   const current = live();
   if (current && !placementChange) { placement = rememberWindowBounds(placement, current.getBounds(), expanded); persistPlacement(); }
   if (background && !hostStopped) {
