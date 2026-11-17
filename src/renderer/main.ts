@@ -299,7 +299,7 @@ function optionIcon(entry: { id: string; icon?: string }) {
   if (entry.icon?.startsWith('data:image/svg+xml')) glyph.style.setProperty('--glyph', `url("${entry.icon}")`); return glyph;
 }
 function renderOptions(platforms: { id: string; label: string; icon?: string }[]) {
-  const entries = [...platforms, { id: 'browser', label: t('Browser') }, { id: 'sharing', label: t('Share limits') }, { id: 'settings', label: t('Settings') }];
+  const entries = [...platforms, { id: 'browser', label: t('Browser') }, { id: 'sharing', label: t('Invite to share limits') }, { id: 'settings', label: t('Settings') }];
   element('platform-options').replaceChildren(...entries.map(entry => {
     const button = document.createElement('button'); button.className = 'model-option'; button.dataset.platform = entry.id; button.role = 'menuitem';
     const label = document.createElement('span'); label.textContent = entry.label; button.append(optionIcon(entry), label);
@@ -324,6 +324,7 @@ function receive(event: Record<string, unknown>) {
     drawUpdates();
     if (event.type === 'updates') return;
   }
+  if (event.type === 'keepAwake') return;
   if (event.type === 'preferences') { applyPreferences(event.preferences as VibesPreferences); return; }
   if (event.type === 'shell') {
     glass = event.glass === true; document.documentElement.dataset.glass = String(glass);

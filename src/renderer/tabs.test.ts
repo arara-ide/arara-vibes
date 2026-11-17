@@ -33,7 +33,7 @@ describe('tab selection fallback', () => {
 });
 
 it('restores the sharing tab without losing conversation tabs', () => {
-  const tabs = [{ id: 'chat', label: 'Codex', kind: 'ai' }, { id: 'sharing', label: 'Share limits', kind: 'settings' }];
+  const tabs = [{ id: 'chat', label: 'Codex', kind: 'ai' }, { id: 'sharing', label: 'Invite to share limits', kind: 'settings' }];
   expect(initialSurface(tabs, 'sharing')).toBe(tabs[1]);
   expect(needsSelection(tabs, 'sharing', false)).toBe(false);
   expect(initialSurface(tabs.slice(0, 1), 'sharing')).toBe(tabs[0]);

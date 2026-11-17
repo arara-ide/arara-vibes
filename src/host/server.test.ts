@@ -92,3 +92,16 @@ it('shares action validation and limits between native IPC and HTTP', async () =
   expect((await post({ action: 'hide' })).status).toBe(200);
   expect(calls).toEqual(['hide', 'hide']);
 });
+
+it('notifies hostEvent when disconnecting from the companion host', async () => {
+  const hostEvents: Record<string, unknown>[] = [];
+  const shell = await startShell('/unused', {
+    locale: 'en',
+    state: () => ({ pinned: true, expanded: true }),
+    run: async () => {},
+    hostEvent: event => { hostEvents.push(event); },
+  });
+  cleanups.push(() => shell.close());
+  expect(await shell.dispatch({ action: 'disconnect' })).toEqual({ status: 200, result: null });
+  expect(hostEvents).toEqual([{ type: 'disconnected' }]);
+});

@@ -6,7 +6,7 @@ import type { UpdatesState, UpdateProduct } from '../main/updates';
 import { HostConnection } from './connection';
 import type { ShellReply } from '../transport';
 
-export interface ShellActions { run(action: string): Promise<unknown>; state(): { pinned: boolean; expanded: boolean; glass?: boolean; update?: string; updates?: UpdatesState }; locale: string; preferences?(update?: unknown): Promise<unknown>; checkUpdates?(): Promise<unknown>; installUpdate?(product?: UpdateProduct): Promise<unknown>; copyText?(text: string): void; shortcutRecording?(recording: boolean): void }
+export interface ShellActions { run(action: string): Promise<unknown>; state(): { pinned: boolean; expanded: boolean; glass?: boolean; update?: string; updates?: UpdatesState }; locale: string; preferences?(update?: unknown): Promise<unknown>; checkUpdates?(): Promise<unknown>; installUpdate?(product?: UpdateProduct): Promise<unknown>; copyText?(text: string): void; shortcutRecording?(recording: boolean): void; hostEvent?(event: Record<string, unknown>): void }
 export async function startShell(directory: string, actions: ShellActions) {
   const secret = randomBytes(24).toString('hex');
   const prefix = `/${secret}/`;
@@ -18,7 +18,7 @@ export async function startShell(directory: string, actions: ShellActions) {
       else listener.write(`data: ${JSON.stringify(message)}\n\n`);
     }
   };
-  const connection = new HostConnection(emit);
+  const connection = new HostConnection(message => { actions.hostEvent?.(message); emit(message); });
   const dispatch = async (value: unknown): Promise<ShellReply> => {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return { status: 400, result: null };
     try {
@@ -40,7 +40,7 @@ export async function startShell(directory: string, actions: ShellActions) {
         result = await actions.installUpdate(product);
       }
       else if (input.action === 'signIn') result = await connection.signIn();
-      else if (input.action === 'disconnect') connection.disconnect();
+      else if (input.action === 'disconnect') { connection.disconnect(); actions.hostEvent?.({ type: 'disconnected' }); }
       else if (['expand', 'hide', 'startHost'].includes(input.action)) { result = await actions.run(input.action); emit({ type: 'shell', ...actions.state() }); }
       else { return { status: 400, result: null }; }
       return { status: 200, result: result ?? null };
