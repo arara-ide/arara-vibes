@@ -1,6 +1,7 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
+import { readJsonRecordSync, writeJsonAtomicSync } from '../atomicJson';
 
 export type Language = 'system' | 'en' | 'pt' | 'es';
 export interface Preferences { language: Language; animations: boolean; splash: boolean; closeAction: 'background' | 'quit'; shortcut: string; launchAtLogin: boolean; showInBar: boolean; onboarded: boolean }
@@ -27,11 +28,10 @@ export function normalizePreferences(input: unknown, base: Preferences = default
   };
 }
 export function loadPreferences(file: string): Preferences {
-  try { return normalizePreferences(JSON.parse(readFileSync(file, 'utf8'))); } catch { return { ...defaultPreferences }; }
+  return normalizePreferences(readJsonRecordSync(file));
 }
 export function savePreferences(file: string, preferences: Preferences) {
-  mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
-  writeFileSync(file, JSON.stringify(preferences, null, 2), { mode: 0o600 });
+  writeJsonAtomicSync(file, preferences, 2);
 }
 export function resolveLanguage(language: Language, system: string) {
   return language === 'system' ? system : language;

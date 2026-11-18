@@ -197,7 +197,7 @@ async function updatePreferences(update?: unknown) {
   if (previous.launchAtLogin !== preferences.launchAtLogin) try { applyLaunchAtLogin(preferences.launchAtLogin); } catch (error) { preferences = previous; savePreferences(preferencesFile(), preferences); throw error; }
   if (previous.shortcut !== preferences.shortcut && !registerShortcut(preferences.shortcut, globalShortcut.isRegistered(previous.shortcut) ? previous.shortcut : undefined)) { preferences.shortcut = previous.shortcut; savePreferences(preferencesFile(), preferences); registerShortcut(preferences.shortcut); }
   if (previous.showInBar !== preferences.showInBar) applyShowInBar(preferences.showInBar);
-  if (previous.language !== preferences.language) { setLocale(resolveLanguage(preferences.language, app.getLocale())); await server?.shutdown(); await background?.stop(); background = undefined; }
+  if (previous.language !== preferences.language) { setLocale(resolveLanguage(preferences.language, app.getLocale())); await startingBackground?.catch(() => undefined); await server?.shutdown(); await background?.stop(); background = undefined; }
   return { ...preferences, defaultShortcut: defaultShortcut() };
 }
 async function run(action: string) {
@@ -240,6 +240,7 @@ async function run(action: string) {
         background = new BackgroundHost(isolated, integration ? output => process.stdout.write(output) : undefined);
       }
       if (!abort.signal.aborted && !codeUpdating) await background.start();
+      if ((quitting || abort.signal.aborted) && background) { await background.stop().catch(() => undefined); background = undefined; }
     })().finally(() => { startingBackground = undefined; });
     return startingBackground;
   }
@@ -476,11 +477,13 @@ app.on('before-quit', event => {
   setSleepBlocker(false);
   const current = live();
   if (current && !placementChange) { placement = rememberWindowBounds(placement, current.getBounds(), expanded); persistPlacement(); }
-  if (background && !hostStopped) {
+  if ((background || startingBackground) && !hostStopped) {
     event.preventDefault(); abort.abort();
     stopping ??= (async () => {
-      try { await server?.shutdown(); }
-      finally {
+      try {
+        await startingBackground?.catch(() => undefined);
+        await server?.shutdown();
+      } finally {
         try { await background?.stop(); }
         finally { hostStopped = true; server?.close(); app.quit(); }
       }

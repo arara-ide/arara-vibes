@@ -58,14 +58,23 @@ export async function startShell(directory: string, actions: ShellActions) {
         response.writeHead(200, { 'Content-Type': 'text/event-stream' });
         response.write(`data: ${JSON.stringify({ type: 'shell', locale: actions.locale, ...actions.state() })}\n\n`);
         listeners.add(response);
-        const timer = setInterval(() => response.write(': heartbeat\n\n'), 10000);
+        const timer = setInterval(() => { if (!response.destroyed) response.write(': heartbeat\n\n'); }, 10000);
         response.on('close', () => { clearInterval(timer); listeners.delete(response); }); return;
       }
       if (request.method === 'POST' && route === 'action') {
         if (request.headers['content-type'] !== 'application/json') { response.writeHead(415).end(); return; }
-        let body = '';
-        for await (const chunk of request) { body += chunk.toString(); if (Buffer.byteLength(body) > 24 * 1024 * 1024) { response.writeHead(413).end(); return; } }
-        const reply = await dispatch(JSON.parse(body));
+        const chunks: Buffer[] = [];
+        let bytes = 0;
+        for await (const chunk of request) {
+          const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+          bytes += buffer.length;
+          if (bytes > 24 * 1024 * 1024) { response.writeHead(413).end(); return; }
+          chunks.push(buffer);
+        }
+        let parsed: unknown;
+        try { parsed = JSON.parse(Buffer.concat(chunks, bytes).toString('utf8')); }
+        catch { response.setHeader('Content-Type', 'application/json'); response.writeHead(400).end(JSON.stringify({ error: 'Invalid JSON' })); return; }
+        const reply = await dispatch(parsed);
         response.setHeader('Content-Type', 'application/json'); response.writeHead(reply.status).end(JSON.stringify(reply.result)); return;
       }
       const document = [...documents.values()].find(item => item.path === route);

@@ -4,7 +4,7 @@ export function chatDocument(html: string, token: string, theme: Record<string, 
   const doc = new DOMParser().parseFromString(html, 'text/html');
   const nonce = doc.querySelector('script[nonce]')?.getAttribute('nonce');
   const policy = doc.querySelector('meta[http-equiv="Content-Security-Policy"]');
-  if (!nonce || !policy) throw new Error('Invalid chat document');
+  if (!nonce || !/^[A-Za-z0-9+/=_-]+$/.test(nonce) || !policy) throw new Error('Invalid chat document');
   policy.setAttribute('content', `default-src 'none'; script-src 'nonce-${nonce}'; style-src data: 'nonce-${nonce}'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'`);
   const css = doc.createElement('style');
   css.setAttribute('nonce', nonce);
