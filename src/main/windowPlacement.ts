@@ -5,11 +5,17 @@ export const RESIZE_SETTLE_MS = 50;
 export const WINDOW_SIZE = { minWidth: 360, maxWidth: 520, minHeight: 360, compactHeight: 44, initialHeight: 480 };
 
 export function fitWindowBounds(bounds: WindowBounds, area: WindowBounds): WindowBounds {
-  const width = Math.min(bounds.width, area.width);
-  const height = Math.min(bounds.height, area.height);
+  const areaX = Number.isFinite(area.x) ? area.x : 0;
+  const areaY = Number.isFinite(area.y) ? area.y : 0;
+  const areaWidth = Math.max(1, Number.isFinite(area.width) ? area.width : 1);
+  const areaHeight = Math.max(1, Number.isFinite(area.height) ? area.height : 1);
+  const width = Math.min(Math.max(1, Number.isFinite(bounds.width) ? bounds.width : areaWidth), areaWidth);
+  const height = Math.min(Math.max(1, Number.isFinite(bounds.height) ? bounds.height : areaHeight), areaHeight);
+  const bx = Number.isFinite(bounds.x) ? bounds.x : areaX;
+  const by = Number.isFinite(bounds.y) ? bounds.y : areaY;
   return {
-    x: Math.max(area.x, Math.min(bounds.x, area.x + area.width - width)),
-    y: Math.max(area.y, Math.min(bounds.y, area.y + area.height - height)),
+    x: Math.max(areaX, Math.min(bx, areaX + areaWidth - width)),
+    y: Math.max(areaY, Math.min(by, areaY + areaHeight - height)),
     width, height,
   };
 }

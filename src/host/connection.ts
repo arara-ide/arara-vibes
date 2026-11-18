@@ -47,6 +47,7 @@ export class HostConnection {
     this.selected = host;
     this.client = randomUUID();
     const response = await fetch(`http://127.0.0.1:${host.port}/events`, { headers: this.headers(), signal: controller.signal, redirect: 'error' });
+    if (this.controller !== controller) { controller.abort(); return; }
     if (!response.ok || !response.body) { this.disconnect(); throw new Error('IDE connection unavailable'); }
     void this.read(response.body, controller);
   }
@@ -63,11 +64,16 @@ export class HostConnection {
         let end: number;
         while ((end = buffer.indexOf('\n\n')) !== -1) {
           const event = buffer.slice(0, end); buffer = buffer.slice(end + 2);
-          if (event.startsWith('data: ') && !controller.signal.aborted) this.emit(JSON.parse(event.slice(6)));
+          if (event.startsWith('data: ') && !controller.signal.aborted) {
+            try {
+              const parsed: unknown = JSON.parse(event.slice(6));
+              if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) this.emit(parsed as Record<string, unknown>);
+            } catch {}
+          }
         }
       }
     } catch { }
-    finally { if (!controller.signal.aborted) { this.disconnect(); this.emit({ type: 'disconnected' }); } }
+    finally { if (!controller.signal.aborted && this.controller === controller) { this.disconnect(); this.emit({ type: 'disconnected' }); } }
   }
   async signIn() {
     if (!this.selected) throw new Error('IDE disconnected');

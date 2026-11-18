@@ -223,14 +223,20 @@ function icon(name: string) {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('aria-hidden', 'true');
   const use = document.createElementNS(svg.namespaceURI, 'use'); use.setAttribute('href', `icons.svg#${name}`); svg.append(use); return svg;
 }
+const closingTabs = new Set<string>();
 async function closeTab(id: string) {
-  if (surfaces.length <= 1 || surfaces.find(surface => surface.id === id)?.running) return;
-  await send({ type: 'close', surface: id }); await send({ type: 'removeTab', surface: id });
-  document.getElementById(`tab-${id}`)?.parentElement?.classList.add('closing'); await new Promise(done => setTimeout(done, 160)); seenTabs.delete(id);
-  views.get(id)?.frame.remove(); views.delete(id);
-  surfaces = surfaces.filter(surface => surface.id !== id);
-  if (selected === id) { selected = ''; if (surfaces[0]) activate(surfaces[0].id); else { element<HTMLDetailsElement>('tab-picker').open = true; busy(false); } }
-  renderTabs();
+  if (closingTabs.has(id) || surfaces.length - closingTabs.size <= 1 || surfaces.find(surface => surface.id === id)?.running) return;
+  closingTabs.add(id);
+  try {
+    await send({ type: 'close', surface: id }); await send({ type: 'removeTab', surface: id });
+    document.getElementById(`tab-${id}`)?.parentElement?.classList.add('closing'); await new Promise(done => setTimeout(done, 160)); seenTabs.delete(id);
+    views.get(id)?.frame.remove(); views.delete(id);
+    surfaces = surfaces.filter(surface => surface.id !== id);
+    if (selected === id) { selected = ''; if (surfaces[0]) activate(surfaces[0].id); else { element<HTMLDetailsElement>('tab-picker').open = true; busy(false); } }
+    renderTabs();
+  } finally {
+    closingTabs.delete(id);
+  }
 }
 function renderTabs() {
   if (dragged) return;
@@ -296,7 +302,7 @@ document.addEventListener('drop', event => {
 function optionIcon(entry: { id: string; icon?: string }) {
   if (entry.id === 'browser' || entry.id === 'sharing' || entry.id === 'settings') { const svg = icon(entry.id === 'browser' ? 'globe' : entry.id === 'sharing' ? 'sign-in' : 'gear'); svg.classList.add('option-icon'); return svg; }
   const glyph = document.createElement('span'); glyph.className = 'option-icon platform-glyph'; glyph.setAttribute('aria-hidden', 'true');
-  if (entry.icon?.startsWith('data:image/svg+xml')) glyph.style.setProperty('--glyph', `url("${entry.icon}")`); return glyph;
+  if (entry.icon?.startsWith('data:image/svg+xml') && !/["'()\\\s]/.test(entry.icon)) glyph.style.setProperty('--glyph', `url("${entry.icon}")`); return glyph;
 }
 function renderOptions(platforms: { id: string; label: string; icon?: string }[]) {
   const entries = [...platforms, { id: 'browser', label: t('Browser') }, { id: 'sharing', label: t('Invite to share limits') }, { id: 'settings', label: t('Settings') }];
@@ -356,7 +362,7 @@ function receive(event: Record<string, unknown>) {
   if (event.type === 'document' && view) {
     view.token = crypto.randomUUID(); view.epoch = Number(event.epoch); view.ready = false; view.pending = [];
     const token = view.token;
-    void action('document', { key: event.surface, html: chatDocument(String(event.html), token, activeHost?.theme ?? {}, view.state, glass, document.documentElement.dataset.motion !== 'off') }).then(path => { if (view.token === token) view.frame.src = String(path); }).catch(fail); return;
+    void action('document', { key: event.surface, html: chatDocument(String(event.html), token, activeHost?.theme ?? {}, view.state, glass, document.documentElement.dataset.motion !== 'off') }).then(path => { if (views.get(String(event.surface)) === view && view.token === token && view.frame.isConnected) view.frame.src = String(path); }).catch(fail); return;
   }
   if (event.type === 'event' && view && event.epoch === view.epoch) {
     const message = event.message as { type?: string };
